@@ -1,33 +1,25 @@
-use regex::{Match, Regex};
-use std::{env, f32::consts::E, fmt::Error, net::Ipv4Addr, process::{Termination, exit}, ptr::read};
-
-use cider_api::CiderClient;
+use regex::{Regex};
+use std::{env, net::Ipv4Addr, process::{exit}};
 
 fn yell() {
     println!("Incorrect usage. Do: syncho <player_name> <peer_ip>");
     exit(0)    
 }
 
-fn parse_ipv4(s: &str) -> Result<Ipv4Addr, String> {
-    let matched = 
-    
-}
-
-fn get_argument(pattern: &str, argument: &String) -> Option<&str> {
-    let matcher = Regex::new(&pattern).unwrap();
+fn get_argument(pattern: &str, argument: &String) -> Option<String> {
+    let matcher = Regex::new(pattern).unwrap();
     let result = matcher.find(argument).unwrap();
 
     if result.is_empty() {
         None
     } else {
-        Some(result.as_str())
+        Some(result.as_str().to_string())
     }
 
 }
 
 
 fn main() {
-
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
         yell();
@@ -39,11 +31,8 @@ fn main() {
     }
 
     let peer_ip = args.get(2).unwrap().parse::<Ipv4Addr>().ok();
-}
-
-
-fn start_player(player: String) {
-    if player == "cider" {
-
+    if let None = peer_ip {
+        yell();
     }
+
 }

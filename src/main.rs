@@ -4,11 +4,6 @@ use std::{env, io::{self, ErrorKind, Write}, ops::Mul, time::Duration};
 use regex::{Regex};
 use std::{path::Path, fs::File, net::Ipv4Addr, process::{exit}};
 
-fn yell() {
-    println!("Incorrect usage. Do: syncho <player_name> <peer_ip>");
-    exit(0)    
-}
-
 fn is_valid_ip(peer_ip: &String) -> bool {
     let ip = peer_ip.parse::<Ipv4Addr>();
 
@@ -38,8 +33,6 @@ fn create_config(file: &mut File) {
             .interact_text()
             .unwrap();
 
-        
-
         loop {
             peer_ip = Input::new()
             .with_prompt("Friend's IP address")
@@ -48,6 +41,8 @@ fn create_config(file: &mut File) {
 
             if is_valid_ip(&peer_ip) {
                 break;
+            } else {
+                println!("\nEnter a valid IP address\n")
             }
         }
 

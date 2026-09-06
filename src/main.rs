@@ -1,6 +1,6 @@
 use dialoguer::{Input, Select};
 use ping;
-use std::{env, io::{self, ErrorKind, Write}, ops::Mul, time::Duration};
+use std::{env, io::{self, ErrorKind, Write}, ops::Mul, string, time::Duration};
 use regex::{Regex};
 use std::{path::Path, fs::File, net::Ipv4Addr, process::{exit}};
 
@@ -14,8 +14,8 @@ fn is_valid_ip(peer_ip: &String) -> bool {
 
 }
 
-fn create_config(file: &mut File) {
-    println!("\nNo previous config found.\n");
+fn create_config(path: &Path) -> File {
+    println!("\nNo previous config found. Creating new config\n");
     
     let valid_players = vec!["Cider", "Spotify"];
     let mut peer_ip;
@@ -53,10 +53,13 @@ fn create_config(file: &mut File) {
             }
     }
 
+    let mut file = File::create_new(path).unwrap();
 
     file.write(format!("{}\n", valid_players[selection]).as_bytes());
     file.write(format!("{}\n", peer_ip).as_bytes());
     file.write(format!("{}\n", api_key).as_bytes());
+
+    file
 }
 
 fn get_config_file() -> File {
@@ -66,13 +69,9 @@ fn get_config_file() -> File {
     if path.exists() {
         File::open(path).unwrap()
     } else {
-        let mut file = File::create_new(path).unwrap();
-        create_config(&mut file);
-        file
+        create_config(&path)
     }
 }
- 
-
 
 fn main() {
     let config_file = get_config_file();

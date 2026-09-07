@@ -1263,6 +1263,7 @@ dependencies = [
  "dialoguer",
  "ping",
  "regex",
+ "serde",
  "serde_json",
  "tokio 0.2.25",
 ]

@@ -8,5 +8,6 @@ cider-api = "0.1.1"
 dialoguer = "0.12.0"
 ping = "0.9.0"
 regex = "1.13.1"
+serde = "1.0.229"
 serde_json = "1.0.151"
 tokio = { version = "0.2.22", features = ["full"] }

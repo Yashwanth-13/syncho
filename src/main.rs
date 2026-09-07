@@ -1,25 +1,52 @@
 use dialoguer::{Input, Select};
 use ping;
-use std::{env, io::{self, ErrorKind, Write}, ops::Mul, string, time::Duration};
-use regex::{Regex};
-use std::{path::Path, fs::File, net::Ipv4Addr, process::{exit}};
+use std::{env, fs, io::{self, BufWriter}};
+use std::{self, path::Path, fs::File, net::Ipv4Addr};
+use serde::{self, Deserialize, Serialize};
 
-fn is_valid_ip(peer_ip: &String) -> bool {
+#[derive(Serialize, Deserialize)]
+struct Config {
+    player: String,
+    token: String,
+    peer_ip: String
+}
+
+fn is_reachable(peer_ip: &String) -> bool {
     let ip = peer_ip.parse::<Ipv4Addr>();
 
     match ip {
-        Ok(val) => true,
+        Ok(val) => {
+            match ping::new(std::net::IpAddr::V4(val))
+            .send() {
+                Ok(_) => true,
+                Err(_) => false
+            }
+        },
         Err(e) => false
     }
-
 }
 
-fn create_config(path: &Path) -> File {
+fn get_ip() -> String {
+    loop {
+        let peer_ip = Input::new()
+        .with_prompt("Friend's IP address")
+        .interact_text()
+        .unwrap();
+
+        if is_reachable(&peer_ip) {
+            return peer_ip
+        } else {
+            println!("Enter a valid IP address\n")
+        }
+    }
+}
+
+fn create_config(path: &Path) -> Config {
     println!("\nNo previous config found. Creating new config\n");
     
     let valid_players = vec!["Cider", "Spotify"];
-    let mut peer_ip;
-    let mut api_key: String;
+    let peer_ip;
+    let api_key: String;
 
     let selection = Select::new()
         .with_prompt("What is your music player?")
@@ -27,52 +54,36 @@ fn create_config(path: &Path) -> File {
         .interact()
         .unwrap();
 
-    loop {        
-        api_key = Input::new()
-            .with_prompt(format!("Enter your API key for {}" , valid_players[selection]))
-            .interact_text()
-            .unwrap();
+    api_key = Input::new()
+        .with_prompt(format!("Enter your API key for {}" , valid_players[selection]))
+        .interact_text()
+        .unwrap();
 
-        loop {
-            peer_ip = Input::new()
-            .with_prompt("Friend's IP address")
-            .interact_text()
-            .unwrap();
+    peer_ip = get_ip();
+ 
+    let file = File::create_new(path).unwrap();
 
-            if is_valid_ip(&peer_ip) {
-                break;
-            } else {
-                println!("\nEnter a valid IP address\n")
-            }
-        }
+    let cnfg = Config {player: valid_players[selection].to_string(), token: api_key, peer_ip: peer_ip};
 
-        match ping::new(peer_ip.parse().unwrap())
-            .send() {
-                Ok(_) => break,
-                Err(_) => println!("Cannot reach host. Make sure its on the network")
-            }
-    }
+    serde_json::to_writer(BufWriter::new(file), &cnfg);
 
-    let mut file = File::create_new(path).unwrap();
+    cnfg
 
-    file.write(format!("{}\n", valid_players[selection]).as_bytes());
-    file.write(format!("{}\n", peer_ip).as_bytes());
-    file.write(format!("{}\n", api_key).as_bytes());
-
-    file
 }
 
-fn get_config_file() -> File {
+fn get_config() -> Config {
     let file_path = format!("{}/.syncho", env::home_dir().unwrap().to_str().unwrap());
     let path = Path::new(&file_path);
     
     if path.exists() {
-        File::open(path).unwrap()
+        let config_data = fs::read_to_string(&file_path).unwrap();
+        let config: Config = serde_json::from_str(&config_data).unwrap();
+        config
     } else {
         create_config(&path)
     }
 }
 
 fn main() {
-    let config_file = get_config_file();
+    let config = get_config();
 }

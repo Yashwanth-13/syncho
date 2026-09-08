@@ -1,11 +1,10 @@
-
 use dialoguer::{Input, Select};
 use ping;
 use std::{env, fs, io::{self, BufWriter}};
 use std::{self, path::Path, fs::File, net::Ipv4Addr};
 use serde::{self, Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     player: String,
     token: String,
@@ -66,7 +65,7 @@ fn create_config(path: &Path) -> Config {
 
     let cnfg = Config {player: valid_players[selection].to_string(), token: api_key, peer_ip: peer_ip};
 
-    serde_json::to_writer(BufWriter::new(file), &cnfg);
+    serde_json::to_writer(BufWriter::new(file), &cnfg).unwrap();
 
     cnfg
 

@@ -1,14 +1,15 @@
-use dialoguer::{Input, Select};
+use dialoguer::{Select};
 use ping;
 use std::{env, fs, io::{self, BufWriter}};
 use std::{self, path::Path, fs::File, net::Ipv4Addr};
 use serde::{self, Deserialize, Serialize};
 
+use crate::helpers::get_input;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
-    player: String,
-    token: String,
-    peer_ip: String
+    pub player: String,
+    pub token: String,
 }
 
 fn is_reachable(peer_ip: &String) -> bool {
@@ -28,10 +29,7 @@ fn is_reachable(peer_ip: &String) -> bool {
 
 fn get_ip() -> String {
     loop {
-        let peer_ip = Input::new()
-        .with_prompt("Friend's IP address")
-        .interact_text()
-        .unwrap();
+        let peer_ip = get_input(&"Friend's IP address".to_string());
 
         if is_reachable(&peer_ip) {
             return peer_ip
@@ -45,7 +43,6 @@ fn create_config(path: &Path) -> Config {
     println!("\nNo previous config found. Creating new config\n");
     
     let valid_players = vec!["Cider", "Spotify"];
-    let peer_ip;
     let api_key: String;
 
     let selection = Select::new()
@@ -54,16 +51,12 @@ fn create_config(path: &Path) -> Config {
         .interact()
         .unwrap();
 
-    api_key = Input::new()
-        .with_prompt(format!("Enter your API key for {}" , valid_players[selection]))
-        .interact_text()
-        .unwrap();
+    api_key = get_input(&format!("Enter your API key for {}" , valid_players[selection]));
 
-    peer_ip = get_ip();
 
     let file = File::create_new(path).unwrap();
 
-    let cnfg = Config {player: valid_players[selection].to_string(), token: api_key, peer_ip: peer_ip};
+    let cnfg = Config {player: valid_players[selection].to_string(), token: api_key};
 
     serde_json::to_writer(BufWriter::new(file), &cnfg).unwrap();
 

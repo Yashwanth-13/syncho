@@ -3,7 +3,7 @@ mod config_manager;
 mod helpers;
 mod player;
 
-use std::{sync::Arc, time::{Instant}};
+use std::{sync::Arc, time::{SystemTime}};
 
 use easy_repl::{Repl, CommandStatus, command};
 use tokio::{net::{TcpListener, TcpStream}, sync::broadcast};
@@ -31,6 +31,13 @@ async fn looper(code: String) {
                 Ok(CommandStatus::Done)
             }
         })
+        .add("pp", command! {
+            "Play-Pause the song",
+            () => || {
+                // TODO: Network Handle for Play-Pause
+                Ok(CommandStatus::Done)
+            }
+        })
         .build().expect("Failed to create repl");
 
     repl.run().expect("REPL error");
@@ -40,7 +47,7 @@ async fn looper(code: String) {
 async fn main() {
     let config = config_manager::get_config();
 
-    // TODO - Get a player object using config
+    // TODO - Get a PlayerState object using config
 
 
 
@@ -50,7 +57,7 @@ async fn main() {
         println!("{}", code);
         tokio::spawn(looper(code.clone().to_string()));
         
-        let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
+        let listener = TcpListener::bind("127.0.0.1:6364").await.unwrap();
         println!("Listening on {}", listener.local_addr().unwrap());
 
         // let broadcast_channel = broadcast::Sender

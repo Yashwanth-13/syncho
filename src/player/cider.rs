@@ -1,9 +1,9 @@
-use cider_api::CiderClient;
+use cider_api::{CiderClient, CiderError};
 
 use dict::{Dict, DictIface};
 use serde::Deserialize;
 use strsim::jaro_winkler;
-
+use super::types::*;
 
 #[derive(Debug, Deserialize)]
 struct SearchResponse {
@@ -40,10 +40,6 @@ struct SongAttributes {
     album_name: String,
 }
 
-pub struct CiderControl {
-    pub cider: CiderClient
-}
-
 impl CiderControl {
 
     fn normalize(s: &str) -> String {
@@ -73,10 +69,8 @@ impl CiderControl {
     }
 
     fn find_best_match(
-        json_str: &str,
-        target_song: &str,
-        target_artist: &str,
-        target_album: &str,
+        json_str: &str, 
+        song: &Song
     ) -> Option<String> {
         let parsed: SearchResponse = serde_json::from_str(json_str).ok()?;
 
@@ -86,7 +80,7 @@ impl CiderControl {
             .songs
             .data
             .iter()
-            .map(|entry| (entry, CiderControl::score_candidate(&entry.attributes, target_song, target_artist, target_album)))
+            .map(|entry| (entry, CiderControl::score_candidate(&entry.attributes, &song.song_name, &song.artist_name, &song.album_name)))
             .max_by(|(_, score_a), (_, score_b)| score_a.partial_cmp(score_b).unwrap())
             .map(|(entry, _)| entry.id.clone())
     }
@@ -95,22 +89,22 @@ impl CiderControl {
         CiderControl { cider: CiderClient::new().with_token(token) }
     }
 
-    pub async fn play(&self, song_name: &String, artist_name: &String, album_name: &String) {
-        let song_id = self.get_id(song_name, artist_name, album_name).await;
+    async fn get_id(&self, song: &Song) -> Option<String>{
+        let path = format!("/v1/catalog/in/search?types=songs&term={}", song.song_name);
+
+        let response = self.cider.amapi_run_v3(&path).await.unwrap().to_string();
+        let best_match = CiderControl::find_best_match(&response, song);
+
+        best_match
+    }
+
+    pub async fn play(&self, song: &Song) {
+        let song_id = self.get_id(song).await;
         
         if let Some(id) = song_id {
             println!("{:?}", id);
             self.cider.play_item("songs", &id).await;
         }
-    }
-
-    async fn get_id(&self, song_name: &String, artist_name: &String, album_name: &String) -> Option<String>{
-        let path = format!("/v1/catalog/in/search?types=songs&term={}", song_name);
-
-        let response = self.cider.amapi_run_v3(&path).await.unwrap().to_string();
-        let best_match = CiderControl::find_best_match(&response, song_name, artist_name, album_name);
-
-        best_match
     }
 
     pub async fn get_current_song(&self) -> Option<Dict::<String>> {
@@ -125,4 +119,13 @@ impl CiderControl {
             None
         }
     }
+
+    pub async fn play_pause(&self) -> Result<(), CiderError> {
+        self.cider.play_pause().await
+    }
+
+    pub async fn previous(&self) -> Result<(), CiderError> {
+        self.cider.previous().await
+    }
+
 }

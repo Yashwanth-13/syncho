@@ -1,5 +1,6 @@
 use cider_api::CiderClient;
 
+use dict::{Dict, DictIface};
 use serde::Deserialize;
 use strsim::jaro_winkler;
 
@@ -110,5 +111,18 @@ impl CiderControl {
         let best_match = CiderControl::find_best_match(&response, song_name, artist_name, album_name);
 
         best_match
+    }
+
+    pub async fn get_current_song(&self) -> Option<Dict::<String>> {
+        if let Some(track)  = self.cider.now_playing().await.unwrap() {
+            let mut song_attr = Dict::<String>::new();
+            song_attr.add("song_name".to_string(), track.name);
+            song_attr.add("artist_name".to_string(), track.artist_name);
+            song_attr.add("album_name".to_string(), track.album_name);
+            song_attr.add("position".to_string(), track.current_playback_time.to_string());
+            Some(song_attr)
+        } else {
+            None
+        }
     }
 }

@@ -15,3 +15,5 @@ clap = { version = "4", features = ["derive"] }
 reqwest = "0.13.4"
 rand = "0.10.2"
 strsim = "0.11.1"
+easy-repl = "0.2.1"
+dict = "0.1.5"

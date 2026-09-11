@@ -1,9 +1,15 @@
-mod cider;
+mod network_manager;
 mod config_manager;
 mod helpers;
+mod player;
+
+use std::{sync::Arc, time::{Instant}};
+
+use easy_repl::{Repl, CommandStatus, command};
+use tokio::{net::{TcpListener, TcpStream}, sync::broadcast};
 
 use clap::{Parser};
-use crate::{cider::CiderControl, helpers::{generate_numeric_code, get_input}};
+use crate::{helpers::{generate_numeric_code, get_input}};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -16,26 +22,49 @@ struct Args {
     join: bool,
 }
 
-enum Player {
-    Cider(CiderControl),
-    Spotify
+async fn looper(code: String) {
+    let mut repl = Repl::builder()
+        .add("code", command! {
+            "Get the session code",
+            () => || {
+                println!("Session Code: {}", &code);
+                Ok(CommandStatus::Done)
+            }
+        })
+        .build().expect("Failed to create repl");
+
+    repl.run().expect("REPL error");
 }
 
 #[tokio::main]
 async fn main() {
     let config = config_manager::get_config();
 
-    let mut player;
-    if config.player == "Cider" {
-        player = Player::Cider(CiderControl::new(&config.token));
-    } else {
-        player = Player::Spotify;
-    }
+    // TODO - Get a player object using config
+
+
 
     let args = Args::parse();
     if args.host {
-        let code = generate_numeric_code();
+        let code = Arc::new(generate_numeric_code());
         println!("{}", code);
+        tokio::spawn(looper(code.clone().to_string()));
+        
+        let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
+        println!("Listening on {}", listener.local_addr().unwrap());
+
+        // let broadcast_channel = broadcast::Sender
+        loop {
+            let (socket, addr) = listener.accept().await.unwrap();
+            println!("New connection from {}", addr);
+
+            tokio::spawn(async move {
+                // Process the socket concurrently
+                if let Err(e) = network_manager::handle_connection(socket).await {
+                    println!("Error handling connection: {}", e);
+                }
+            });
+        }
     } else if args.join {
         let code = get_input(&"Session Code".to_string());
     }

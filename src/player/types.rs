@@ -1,6 +1,8 @@
 use std::time::{SystemTime};
 use cider_api::{CiderClient};
 use serde::{self, Deserialize, Serialize};
+use super::spotify::SpotifyPlayer;
+
 
 pub struct CiderControl {
     pub cider: CiderClient

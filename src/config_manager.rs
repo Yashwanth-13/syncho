@@ -50,7 +50,7 @@ impl Config {
 
         let cnfg = match valid_players[selection] {
             "Cider" => {
-                let token = get_input("Enter your Cider token");
+                let token = get_input(&"Enter your Cider token".to_string(),false);
 
                 Config::Cider {
                     token,
@@ -58,10 +58,10 @@ impl Config {
             }
 
             "Spotify" => {
-                let refresh_token = get_input("Enter your Spotify refresh token");
-                let client_id = get_input("Enter your Spotify client ID");
-                let client_secret = get_input("Enter your Spotify client token");
-                let access_token = get_input("Enter your Spotify access token");
+                let refresh_token = get_input(&"Enter your Spotify refresh token".to_string(),false);
+                let client_id = get_input(&"Enter your Spotify client ID".to_string(),false);
+                let client_secret = get_input(&"Enter your Spotify client token".to_string(),false);
+                let access_token = get_input(&"Enter your Spotify access token".to_string(),false);
 
                 Config::Spotify {
                     refresh_token,

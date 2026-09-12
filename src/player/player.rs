@@ -2,7 +2,8 @@ use super::types::*;
 use super::cider::*;
 use dict::DictIface;
 use std::time::{Duration, SystemTime};
-
+pub use crate::player::types::PlayState;
+use super::spotify::SpotifyPlayer;
 
 impl PlayState {
 

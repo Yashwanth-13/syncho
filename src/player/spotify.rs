@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 
-use crate::config::Config;
+use super::types::Config;
 
 #[derive(Debug, Clone)]
 pub struct SpotifyPlayer {

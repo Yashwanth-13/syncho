@@ -39,7 +39,6 @@ impl Config {
         println!("\nNo previous config found. Creating new config\n");
         
         let valid_players = vec!["Cider", "Spotify"];
-        let api_key: String;
 
         let selection = Select::new()
             .with_prompt("What is your music player?")
@@ -47,12 +46,33 @@ impl Config {
             .interact()
             .unwrap();
 
-        api_key = get_input(&format!("Enter your API key for {}" , valid_players[selection]));
-
-
         let file = File::create_new(path).unwrap();
 
-        let cnfg = Config {player: valid_players[selection].to_string(), token: api_key};
+        let cnfg = match valid_players[selection] {
+            "Cider" => {
+                let token = get_input("Enter your Cider token");
+
+                Config::Cider {
+                    token,
+                }
+            }
+
+            "Spotify" => {
+                let refresh_token = get_input("Enter your Spotify refresh token");
+                let client_id = get_input("Enter your Spotify client ID");
+                let client_secret = get_input("Enter your Spotify client token");
+                let access_token = get_input("Enter your Spotify access token");
+
+                Config::Spotify {
+                    refresh_token,
+                    client_id,
+                    client_secret,
+                    access_token,
+                }
+            }
+
+            _ => unreachable!(),
+        };
 
         serde_json::to_writer(BufWriter::new(file), &cnfg).unwrap();
 

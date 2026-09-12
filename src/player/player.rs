@@ -3,36 +3,38 @@ use super::cider::*;
 use dict::DictIface;
 use std::time::{Duration, SystemTime};
 
-pub struct PlayState {
-    pub is_playing: bool,
-    pub player: Player,
-    pub current_song: Option<Song>
-}
 
 impl PlayState {
 
     pub fn new(config: &Config) -> PlayState {
-        
-        // TODO: Uncomment this `if` statement and delete the PlayState return after you implement the Spotify version
-        // if config.player == "Cider" {
-        //     PlayState{is_playing: false, player: Player::Cider(CiderControl::new(&config.token)) , current_song: None}
-        // }
+        let player = match config {
+            Config::Cider { token } => {
+                Player::Cider(CiderControl::new(token))
+            }
 
-        PlayState{is_playing: false, player: Player::Cider(CiderControl::new(&config.token)) , current_song: None}
-        
-        // TODO
-        // if config.player == "Spotify" {
-        //     PlayState{is_playing: false, player: Player::Cider(CiderControl::new(&config.token)) , current_song: None}
-        // }
-        
+            Config::Spotify { refresh_token, client_id, client_secret, access_token } => {
+                Player::Spotify(SpotifyPlayer::new(
+                    refresh_token.clone(),
+                    client_id.clone(),
+                    client_secret.clone(),
+                    access_token.clone(),
+                ))
+            }
+        };
+
+        PlayState {
+            is_playing: false,
+            player,
+            current_song: None,
+        }
     }
 
-    pub async fn get_current_song(&self) -> Option<Song> {
+    pub async fn get_current_song(&mut self) -> Option<Song> {
         if !self.is_playing {
             return None;
         }
 
-        match &self.player {
+        match &mut self.player {
             Player::Cider(client) => {
                 let result = client.get_current_song().await;
                 if let Some(song_attr) = result {
@@ -46,10 +48,17 @@ impl PlayState {
                 }
             },
 
-            // TODO 
-            _ => {
-                println!("spotify implementation");
-                Some(Song { song_name: "()".to_string(), artist_name: "()".to_string(), album_name: "()".to_string(), time_started: SystemTime::now() })
+            Player::Spotify(client) => {
+                let result = client.get_current_song().await;
+                if let Some(song_attr) = result {
+                    let song_name = song_attr.get("song_name").unwrap().to_string();
+                    let artist_name = song_attr.get("artist_name").unwrap().to_string();
+                    let album_name = song_attr.get("album_name").unwrap().to_string();
+                    let current_position_seconds = song_attr.get("position").unwrap().to_string();
+                    Some(Song { song_name: song_name, artist_name: artist_name, album_name: album_name, time_started: SystemTime::now().checked_sub(Duration::from_secs(current_position_seconds.parse().unwrap())).unwrap() })
+                } else {
+                    None
+                }
             }
         }
     }
@@ -60,9 +69,9 @@ impl PlayState {
             Player::Cider(client) => {
                 client.play_pause().await;
             },
-
-            // TODO
-            _ => {}
+            Player::Spotify(_) => {
+                // TODO: Spotify implementation
+            }
         }
     }
 
@@ -72,9 +81,9 @@ impl PlayState {
             Player::Cider(client) => {
                 client.play(&song).await;
             },
-            
-            // 
-            _ => {}
+            Player::Spotify(_) => {
+                // TODO: Spotify implementation
+            }
         }
     }
 }

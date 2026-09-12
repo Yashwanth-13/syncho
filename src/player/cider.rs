@@ -42,6 +42,10 @@ struct SongAttributes {
 
 impl CiderControl {
 
+    pub fn new(token: &String) -> CiderControl {
+        CiderControl { cider: CiderClient::new().with_token(token) }
+    }
+
     fn normalize(s: &str) -> String {
         let lower = s.to_lowercase();
         let paren_stripped = match lower.find('(') {
@@ -83,10 +87,6 @@ impl CiderControl {
             .map(|entry| (entry, CiderControl::score_candidate(&entry.attributes, &song.song_name, &song.artist_name, &song.album_name)))
             .max_by(|(_, score_a), (_, score_b)| score_a.partial_cmp(score_b).unwrap())
             .map(|(entry, _)| entry.id.clone())
-    }
-
-    pub fn new(token: &String) -> CiderControl {
-        CiderControl { cider: CiderClient::new().with_token(token) }
     }
 
     async fn get_id(&self, song: &Song) -> Option<String>{

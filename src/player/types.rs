@@ -1,8 +1,15 @@
 use std::time::{SystemTime};
 use cider_api::{CiderClient};
+use serde::{self, Deserialize, Serialize};
 
 pub struct CiderControl {
     pub cider: CiderClient
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Config {
+    pub player: String,
+    pub token: String,
 }
 
 pub enum Player {

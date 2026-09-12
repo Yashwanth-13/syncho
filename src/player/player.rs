@@ -4,13 +4,30 @@ use dict::DictIface;
 use std::time::{Duration, SystemTime};
 
 pub struct PlayState {
-    is_playing: bool,
-    player: Player,
-    current_song: Song
+    pub is_playing: bool,
+    pub player: Player,
+    pub current_song: Option<Song>
 }
 
 impl PlayState {
-    async fn get_current_song(&self) -> Option<Song> {
+
+    pub fn new(config: &Config) -> PlayState {
+        
+        // TODO: Uncomment this `if` statement and delete the PlayState return after you implement the Spotify version
+        // if config.player == "Cider" {
+        //     PlayState{is_playing: false, player: Player::Cider(CiderControl::new(&config.token)) , current_song: None}
+        // }
+
+        PlayState{is_playing: false, player: Player::Cider(CiderControl::new(&config.token)) , current_song: None}
+        
+        // TODO
+        // if config.player == "Spotify" {
+        //     PlayState{is_playing: false, player: Player::Cider(CiderControl::new(&config.token)) , current_song: None}
+        // }
+        
+    }
+
+    pub async fn get_current_song(&self) -> Option<Song> {
         if !self.is_playing {
             return None;
         }
@@ -38,7 +55,7 @@ impl PlayState {
     }
 
     // TODO - REPL
-    async fn play_pause(&self) {
+    pub async fn play_pause(&self) {
         match &self.player {
             Player::Cider(client) => {
                 client.play_pause().await;
@@ -50,7 +67,7 @@ impl PlayState {
     }
 
     // TODO - REPL
-    async fn play(&self, song: Song) {
+    pub async fn play(&self, song: Song) {
         match &self.player {
             Player::Cider(client) => {
                 client.play(&song).await;

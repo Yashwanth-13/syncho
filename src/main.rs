@@ -22,7 +22,7 @@ struct Args {
     join: bool,
 }
 
-async fn looper(code: String, playState: &PlayState) {
+async fn looper(code: String, playState: PlayState) {
     let mut repl = Repl::builder()
         .add("code", command! {
             "Get the session code",
@@ -64,7 +64,7 @@ async fn main() {
     if args.host {
         let code = Arc::new(generate_numeric_code());
         println!("{}", code);
-        tokio::spawn(looper(code.clone().to_string(), &play_state));
+        tokio::spawn(looper(code.clone().to_string(), play_state));
         
         let listener = TcpListener::bind("127.0.0.1:6364").await.unwrap();
         println!("Listening on {}", listener.local_addr().unwrap());

@@ -25,7 +25,7 @@ impl Config {
 
     fn get_ip() -> String {
         loop {
-            let peer_ip = get_input(&"Friend's IP address".to_string());
+            let peer_ip = get_input(&"Friend's IP address".to_string(), false);
 
             if Config::is_reachable(&peer_ip) {
                 return peer_ip
@@ -47,7 +47,7 @@ impl Config {
             .interact()
             .unwrap();
 
-        api_key = get_input(&format!("Enter your API key for {}" , valid_players[selection]));
+        api_key = get_input(&format!("Enter your API key for {}" , valid_players[selection]), false);
 
 
         let file = File::create_new(path).unwrap();

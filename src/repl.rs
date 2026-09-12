@@ -1,0 +1,101 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
+
+use easy_repl::anyhow;
+use mini_async_repl::{
+    command::{Command, CommandArgInfo, ExecuteCommand},
+    CommandStatus, Repl,
+};
+
+use crate::helpers::get_input;
+use crate::player::player::PlayState;
+use crate::player::types::Song;
+
+// --- "code" command: just prints the session code ---
+struct CodeHandler {
+    code: String,
+}
+impl CodeHandler {
+    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
+        println!("Session Code: {}", &self.code);
+        Ok(CommandStatus::Done)
+    }
+}
+impl ExecuteCommand for CodeHandler {
+    fn execute(
+        &mut self,
+        _args: Vec<String>,
+        _args_info: Vec<CommandArgInfo>,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
+        Box::pin(self.handle_command())
+    }
+}
+
+// "pp" command
+struct PlayPauseHandler {
+    play_state: Arc<Mutex<PlayState>>,
+}
+
+impl PlayPauseHandler {
+    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
+        // TODO: Network handle for play-pause
+        let _ = &self.play_state; // will be used once wired up
+        Ok(CommandStatus::Done)
+    }
+}
+
+impl ExecuteCommand for PlayPauseHandler {
+    fn execute(
+        &mut self,
+        _args: Vec<String>,
+        _args_info: Vec<CommandArgInfo>,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
+        Box::pin(self.handle_command())
+    }
+}
+
+// --- "ps" command: play a specific song ---
+struct PlaySongHandler {
+    play_state: Arc<Mutex<PlayState>>,
+}
+
+impl PlaySongHandler {
+    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
+        let song_name = get_input(&"Song name".to_string(), false);
+        let album_name = get_input(&"Album Name".to_string(), true);
+        let artist_name = get_input(&"Artist Name".to_string(), true);
+
+        let play_state = Arc::clone(&self.play_state);
+        play_state.lock().unwrap().play(Song {song_name, album_name, artist_name, time_started: SystemTime::now()}).await;
+
+        Ok(CommandStatus::Done)
+    }
+}
+impl ExecuteCommand for PlaySongHandler {
+    fn execute(
+        &mut self,
+        _args: Vec<String>,
+        _args_info: Vec<CommandArgInfo>,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
+        Box::pin(self.handle_command())
+    }
+}
+
+pub async fn looper(code: String, play_state: PlayState) {
+    let play_state = Arc::new(Mutex::new(play_state));
+    println!("hmmmmm");
+    let mut repl = Repl::builder()
+        .add("ps", Command::new(
+            "Play a specific song",
+            vec![],
+            Box::new(PlaySongHandler {
+                play_state: Arc::clone(&play_state),
+            }),
+        ))
+        .build()
+        .expect("Failed to create repl");
+
+    repl.run().await.expect("REPL error");
+}

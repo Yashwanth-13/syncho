@@ -1050,6 +1050,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
+name = "mini_async_repl"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc939afb3fac505c2aae9ab3338fde13fd48688aaecc23572b035aac4fd228c9"
+dependencies = [
+ "anyhow",
+ "rustyline",
+ "rustyline-derive",
+ "shell-words",
+ "textwrap",
+ "thiserror 1.0.69",
+ "tokio",
+ "trie-rs",
+]
+
+[[package]]
 name = "mio"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1976,6 +1992,7 @@ dependencies = [
  "dialoguer",
  "dict",
  "easy-repl",
+ "mini_async_repl",
  "ping",
  "rand 0.10.2",
  "regex",

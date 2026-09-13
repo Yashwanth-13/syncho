@@ -1,3 +1,5 @@
+use std::{hint::select_unpredictable, thread::sleep, time::Duration};
+
 use cider_api::{CiderClient, CiderError};
 
 use dict::{Dict, DictIface};
@@ -69,7 +71,11 @@ impl CiderControl {
         let artist_sim = jaro_winkler(&CiderControl::normalize(&candidate.artist_name), &CiderControl::normalize(target_artist));
         let album_sim = jaro_winkler(&CiderControl::normalize(&candidate.album_name), &CiderControl::normalize(target_album));
 
-        song_sim * 0.4 + artist_sim * 0.45 + album_sim * 0.15
+        let score = song_sim * 0.4 + artist_sim * 0.45 + album_sim * 0.15;
+        println!("Score: {}; Song: {}; Artist: {}; Album: {}", score, &candidate.name, &candidate.artist_name, &candidate.album_name);
+        println!("Score: {}; Song: {}; Artist: {}; Album: {}\n", score, song_sim, artist_sim, album_sim);
+        score
+
     }
 
     fn find_best_match(
@@ -91,11 +97,30 @@ impl CiderControl {
 
     async fn get_id(&self, song: &Song) -> Option<String>{
         let path = format!("/v1/catalog/in/search?types=songs&term={}", song.song_name);
+        
+        
+        // let bm = CiderControl::find_best_match(&self.cider.amapi_run_v3(&path).await.unwrap().to_string(), song);
+        let mut back_off: f64 = 1.0;
+        let mut count = 0;
+        loop {
+            match self.cider.amapi_run_v3(&path).await {
+                Ok(val) => {
+                    let best_match = CiderControl::find_best_match(&val.to_string(), song);
+                    return best_match;
+                },
+                Err(_) => {
+                    if count > 5 {
+                        println!("Max hit reached. Aborting request");
+                        return None;
+                    }
+                    println!("Error. Retrying again after: {}s", back_off);
+                    sleep(Duration::from_secs_f64(back_off));
+                    back_off = back_off * 1.5;
+                    count = count + 1;
+                }
+            }
 
-        let response = self.cider.amapi_run_v3(&path).await.unwrap().to_string();
-        let best_match = CiderControl::find_best_match(&response, song);
-
-        best_match
+        }
     }
 
     pub async fn play(&self, song: &Song) {
@@ -107,6 +132,14 @@ impl CiderControl {
         }
     }
 
+    pub async fn play_later(&self, song: &Song) {
+        let song_id = self.get_id(song).await;
+        
+        if let Some(id) = song_id {
+            println!("{:?}", id);
+            self.cider.play_later("songs", &id).await;
+        }
+    }
     pub async fn get_current_song(&self) -> Option<Dict::<String>> {
         if let Some(track)  = self.cider.now_playing().await.unwrap() {
             let mut song_attr = Dict::<String>::new();

@@ -26,7 +26,6 @@ struct Args {
 #[tokio::main]
 async fn main() {
     let config = Config::get_config();
-    let play_state = PlayState::new(&config);
 
     let args = Args::parse();
     if args.host {
@@ -36,8 +35,9 @@ async fn main() {
         let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
 
         // TODO - handle_connection
+        
         println!("Listening on {}", listener.local_addr().unwrap());
-        repl::looper(code.clone().to_string(), play_state).await;
+        repl::looper(code.clone().to_string(), PlayState::new(&config)).await;
     } else if args.join {
         let code = get_input(&"Session Code".to_string(), false);
     }

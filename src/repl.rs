@@ -13,6 +13,14 @@ use crate::helpers::get_input;
 use crate::player::player::PlayState;
 use crate::player::types::Song;
 
+fn get_song() -> Song {
+    let song_name = get_input(&"Song name".to_string(), false);
+    let album_name = get_input(&"Album Name".to_string(), true);
+    let artist_name = get_input(&"Artist Name".to_string(), true);
+
+    Song { song_name, artist_name, album_name, time_started: SystemTime::now() }
+}
+
 // --- "code" command: just prints the session code ---
 struct CodeHandler {
     code: String,
@@ -63,17 +71,39 @@ struct PlaySongHandler {
 
 impl PlaySongHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        let song_name = get_input(&"Song name".to_string(), false);
-        let album_name = get_input(&"Album Name".to_string(), true);
-        let artist_name = get_input(&"Artist Name".to_string(), true);
-
+        let song_to_play = get_song();
         let play_state = Arc::clone(&self.play_state);
-        play_state.lock().unwrap().play(Song {song_name, album_name, artist_name, time_started: SystemTime::now()}).await;
+        play_state.lock().unwrap().play(song_to_play).await;
 
         Ok(CommandStatus::Done)
     }
 }
 impl ExecuteCommand for PlaySongHandler {
+    fn execute(
+        &mut self,
+        _args: Vec<String>,
+        _args_info: Vec<CommandArgInfo>,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
+        Box::pin(self.handle_command())
+    }
+}
+
+// --- "pl" command: play a specific song later
+struct PlayLaterHandler {
+    play_state: Arc<Mutex<PlayState>>,
+}
+
+impl PlayLaterHandler {
+    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
+        let song_to_play = get_song();
+        let play_state = Arc::clone(&self.play_state);
+        play_state.lock().unwrap().play_later(song_to_play).await;
+
+        Ok(CommandStatus::Done)
+    }
+}
+
+impl ExecuteCommand for PlayLaterHandler {
     fn execute(
         &mut self,
         _args: Vec<String>,
@@ -93,6 +123,13 @@ pub async fn looper(code: String, play_state: PlayState) {
             Box::new(PlaySongHandler {
                 play_state: Arc::clone(&play_state),
             }),
+        ))
+        .add("pl", Command::new(
+            "Add a song to the queue",
+            vec![], 
+            Box::new(PlayLaterHandler {
+                play_state: Arc::clone(&play_state),
+            })
         ))
         .build()
         .expect("Failed to create repl");

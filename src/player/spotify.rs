@@ -168,8 +168,56 @@ impl SpotifyPlayer {
 
         Self::parse_song(&body)
     }
+    pub async fn previous(&mut self) -> Result<()> {
+        let resp = self
+            .client
+            .post("https://api.spotify.com/v1/me/player/previous")
+            .bearer_auth(&self.access_token)
+            .header(reqwest::header::CONTENT_LENGTH, "0")
+            .body(Vec::new())
+            .send()
+            .await?;
 
-        pub async fn play_pause(&mut self) -> Result<()> {
+        let status = resp.status();
+        let body: Value = resp.json().await.unwrap_or(Value::Null);
+
+        if Self::is_expired_token_error(status, &body) {
+            self.refresh_access_token().await?;
+            return Box::pin(self.previous()).await;
+        }
+
+        if !status.is_success() && status != StatusCode::NO_CONTENT {
+            return Err(anyhow!("failed to skip to previous track ({})", status));
+        }
+
+        Ok(())
+    }
+    pub async fn next(&mut self) -> Result<()> {
+        let resp = self
+            .client
+            .post("https://api.spotify.com/v1/me/player/next")
+            .bearer_auth(&self.access_token)
+            .header(reqwest::header::CONTENT_LENGTH, "0")
+            .body(Vec::new())
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let body: Value = resp.json().await.unwrap_or(Value::Null);
+
+        if Self::is_expired_token_error(status, &body) {
+            self.refresh_access_token().await?;
+            return Box::pin(self.next()).await;
+        }
+
+        if !status.is_success() && status != StatusCode::NO_CONTENT {
+            return Err(anyhow!("failed to skip to next track ({})", status));
+        }
+
+        Ok(())
+    }
+
+    pub async fn play_pause(&mut self) -> Result<()> {
         let resp = self
             .client
             .get("https://api.spotify.com/v1/me/player/currently-playing")
@@ -182,38 +230,40 @@ impl SpotifyPlayer {
         if status == StatusCode::NO_CONTENT {
             // Nothing playing at all; nothing to toggle.
             return Ok(());
-        }
-
-        let body: Value = resp.json().await?;
-
-        if Self::is_expired_token_error(status, &body) {
-            self.refresh_access_token().await?;
-            return Box::pin(self.play_pause()).await;
-        }
-
-        let is_playing = body.get("is_playing").and_then(|v| v.as_bool()).unwrap_or(false);
-
-        let endpoint = if is_playing {
-            "https://api.spotify.com/v1/me/player/pause"
-        } else {
-            "https://api.spotify.com/v1/me/player/play"
-        };
-
-        let resp = self
-            .client
-            .put(endpoint)
-            .bearer_auth(&self.access_token)
-            .send()
-            .await?;
-
-        let status = resp.status();
-        if !status.is_success() && status != StatusCode::NO_CONTENT {
-            return Err(anyhow!("failed to toggle playback ({})", status));
-        }
-
-        Ok(())
     }
-        async fn search_track(&self, track: &str, artist: &str) -> Result<String> {
+
+    let body: Value = resp.json().await?;
+
+    if Self::is_expired_token_error(status, &body) {
+        self.refresh_access_token().await?;
+        return Box::pin(self.play_pause()).await;
+    }
+
+    let is_playing = body.get("is_playing").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    let endpoint = if is_playing {
+        "https://api.spotify.com/v1/me/player/pause"
+    } else {
+        "https://api.spotify.com/v1/me/player/play"
+    };
+
+    let resp = self
+        .client
+        .put(endpoint)
+        .bearer_auth(&self.access_token)
+        .header(reqwest::header::CONTENT_LENGTH, "0")
+        .body(Vec::new())
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if !status.is_success() && status != StatusCode::NO_CONTENT {
+        return Err(anyhow!("failed to toggle playback ({})", status));
+    }
+
+    Ok(())
+}
+        async fn search_track(&mut self, track: &str, artist: &str) -> Result<String> {
         let query = format!("track:{} artist:{}", track, artist);
 
         let resp = self
@@ -226,6 +276,11 @@ impl SpotifyPlayer {
 
         let status = resp.status();
         let body: Value = resp.json().await?;
+
+        if Self::is_expired_token_error(status, &body) {
+            self.refresh_access_token().await?;
+            return Box::pin(self.search_track(track, artist)).await;
+        }
 
         if !status.is_success() {
             return Err(anyhow!("Spotify search failed ({}): {}", status, body));
@@ -241,6 +296,7 @@ impl SpotifyPlayer {
 
         Ok(track_id.to_string())
     }
+
     pub async fn play(&mut self, song: &Song) -> Result<()> {
         let track_id = self.search_track(&song.song_name, &song.artist_name).await?;
         let uri = format!("spotify:track:{}", track_id);
@@ -262,6 +318,36 @@ impl SpotifyPlayer {
 
         if !status.is_success() && status != StatusCode::NO_CONTENT {
             return Err(anyhow!("failed to start playback ({})", status));
+        }
+
+        Ok(())
+    }
+
+
+    pub async fn add_to_queue(&mut self, song: &Song) -> Result<()> {
+        let track_id = self.search_track(&song.song_name, &song.artist_name).await?;
+        let uri = format!("spotify:track:{}", track_id);
+
+        let resp = self
+            .client
+            .post("https://api.spotify.com/v1/me/player/queue")
+            .bearer_auth(&self.access_token)
+            .query(&[("uri", uri.as_str())])
+            .header(reqwest::header::CONTENT_LENGTH, "0")
+            .body(Vec::new())
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let body: Value = resp.json().await.unwrap_or(Value::Null);
+
+        if Self::is_expired_token_error(status, &body) {
+            self.refresh_access_token().await?;
+            return Box::pin(self.add_to_queue(song)).await;
+        }
+
+        if !status.is_success() && status != StatusCode::NO_CONTENT {
+            return Err(anyhow!("failed to queue track ({})", status));
         }
 
         Ok(())

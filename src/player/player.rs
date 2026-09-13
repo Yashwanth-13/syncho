@@ -78,6 +78,8 @@ impl PlayState {
         }
     }
 
+
+    //addes the song at the end of the queue(laaaaaaaaaaaast)
     pub async fn play_later(&mut self, song: Song) {
         match &mut self.player {
             Player::Cider(client) => {
@@ -86,7 +88,7 @@ impl PlayState {
 
             // TODO - Spotify
             Player::Spotify(client) => {
-                if let Err(e) = client.play(&song).await {
+                if let Err(e) = client.add_to_queue(&song).await {
                     eprintln!("Spotify implementation failed: {}", e);
                 }
             }
@@ -99,7 +101,6 @@ impl PlayState {
                 client.play_pause().await;
             },
 
-            // TODO - Spotify
             Player::Spotify(client) => {
                 if let Err(e) = client.play_pause().await {
                     eprintln!("Spotify implementation failed: {}", e);
@@ -108,45 +109,45 @@ impl PlayState {
         }
     }
 
+    //plays previous song
     pub async fn previous(&mut self) {
         match &mut self.player {
             Player::Cider(client) => {
                 client.previous().await;
             },
 
-            // TODO - Spotify
             Player::Spotify(client) => {
-                if let Err(e) = client.play_pause().await {
+                if let Err(e) = client.previous().await {
                     eprintln!("Spotify implementation failed: {}", e);
                 }
             }
         }
     }
-
+    
+    //plays the next song
     pub async fn next(&mut self) {
         match &mut self.player {
             Player::Cider(client) => {
                 client.next().await;
             },
 
-            // TODO - Spotify
             Player::Spotify(client) => {
-                if let Err(e) = client.play_pause().await {
+                if let Err(e) = client.next().await {
                     eprintln!("Spotify implementation failed: {}", e);
                 }
             }
         }
     }
-
+    
+    //addes the song to queue(this is the song that plays immediatly after the present one)
     pub async fn play_next(&mut self, song: Song) {
         match &mut self.player {
             Player::Cider(client) => {
                 client.play_next(&song).await;
             },
 
-            // TODO - Spotify
             Player::Spotify(client) => {
-                if let Err(e) = client.play_pause().await {
+                if let Err(e) = client.add_to_queue(&song).await {
                     eprintln!("Spotify implementation failed: {}", e);
                 }
             }

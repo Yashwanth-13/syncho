@@ -210,13 +210,6 @@ pub async fn looper(code: String, play_state: PlayState) {
                 play_state: Arc::clone(&play_state),
             }),
         ))
-        .add("pl", Command::new(
-            "Add a song to the queue",
-            vec![], 
-            Box::new(PlayLaterHandler {
-                play_state: Arc::clone(&play_state),
-            })
-        ))
         .add("pp", Command::new(
             "Play-Pause the player",
             vec![],
@@ -238,7 +231,6 @@ pub async fn looper(code: String, play_state: PlayState) {
                 play_state: Arc::clone(&play_state),
             })
         ))
-
         .add("pn", Command::new(
             "Play a specific song next",
             vec![],

@@ -64,26 +64,32 @@ impl PlayState {
         }
     }
 
-    // TODO - REPL
-    pub async fn play_pause(&self) {
-        match &self.player {
+
+
+        // TODO - REPL
+    pub async fn play_pause(&mut self) {
+        match &mut self.player {
             Player::Cider(client) => {
                 client.play_pause().await;
             },
-            Player::Spotify(_) => {
-                // TODO: Spotify implementation
+            Player::Spotify(client) => {
+                if let Err(e) = client.play_pause().await {
+                    eprintln!("Spotify play_pause failed: {}", e);
+                }
             }
         }
     }
 
     // TODO - REPL
-    pub async fn play(&self, song: Song) {
-        match &self.player {
+    pub async fn play(&mut self, song: Song) {
+        match &mut self.player {
             Player::Cider(client) => {
                 client.play(&song).await;
             },
-            Player::Spotify(_) => {
-                // TODO: Spotify implementation
+            Player::Spotify(client) => {
+                if let Err(e) = client.play(&song).await {
+                    eprintln!("Spotify play failed: {}", e);
+                }
             }
         }
     }

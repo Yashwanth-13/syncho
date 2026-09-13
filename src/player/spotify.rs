@@ -17,6 +17,8 @@ pub struct SpotifyPlayer {
     access_token: String,
 }
 
+use super::types::Song;
+
 impl SpotifyPlayer {
     pub fn new(
         refresh_token: String,
@@ -167,13 +169,101 @@ impl SpotifyPlayer {
         Self::parse_song(&body)
     }
 
-    pub async fn play_pause(&mut self) -> Result<()> {
-        // TODO
+        pub async fn play_pause(&mut self) -> Result<()> {
+        let resp = self
+            .client
+            .get("https://api.spotify.com/v1/me/player/currently-playing")
+            .bearer_auth(&self.access_token)
+            .send()
+            .await?;
+
+        let status = resp.status();
+
+        if status == StatusCode::NO_CONTENT {
+            // Nothing playing at all; nothing to toggle.
+            return Ok(());
+        }
+
+        let body: Value = resp.json().await?;
+
+        if Self::is_expired_token_error(status, &body) {
+            self.refresh_access_token().await?;
+            return Box::pin(self.play_pause()).await;
+        }
+
+        let is_playing = body.get("is_playing").and_then(|v| v.as_bool()).unwrap_or(false);
+
+        let endpoint = if is_playing {
+            "https://api.spotify.com/v1/me/player/pause"
+        } else {
+            "https://api.spotify.com/v1/me/player/play"
+        };
+
+        let resp = self
+            .client
+            .put(endpoint)
+            .bearer_auth(&self.access_token)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() && status != StatusCode::NO_CONTENT {
+            return Err(anyhow!("failed to toggle playback ({})", status));
+        }
+
         Ok(())
     }
+        async fn search_track(&self, track: &str, artist: &str) -> Result<String> {
+        let query = format!("track:{} artist:{}", track, artist);
 
-    pub async fn play(&mut self) -> Result<()> {
-        // TODO
+        let resp = self
+            .client
+            .get("https://api.spotify.com/v1/search")
+            .bearer_auth(&self.access_token)
+            .query(&[("q", query.as_str()), ("type", "track"), ("limit", "1")])
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let body: Value = resp.json().await?;
+
+        if !status.is_success() {
+            return Err(anyhow!("Spotify search failed ({}): {}", status, body));
+        }
+
+        let track_id = body
+            .get("tracks")
+            .and_then(|v| v.get("items"))
+            .and_then(|v| v.get(0))
+            .and_then(|v| v.get("id"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("track not found: {} by {}", track, artist))?;
+
+        Ok(track_id.to_string())
+    }
+    pub async fn play(&mut self, song: &Song) -> Result<()> {
+        let track_id = self.search_track(&song.song_name, &song.artist_name).await?;
+        let uri = format!("spotify:track:{}", track_id);
+
+        let resp = self
+            .client
+            .put("https://api.spotify.com/v1/me/player/play")
+            .bearer_auth(&self.access_token)
+            .json(&serde_json::json!({ "uris": [uri] }))
+            .send()
+            .await?;
+
+        let status = resp.status();
+
+        if Self::is_expired_token_error(status, &resp.json().await.unwrap_or(Value::Null)) {
+            self.refresh_access_token().await?;
+            return Box::pin(self.play(song)).await;
+        }
+
+        if !status.is_success() && status != StatusCode::NO_CONTENT {
+            return Err(anyhow!("failed to start playback ({})", status));
+        }
+
         Ok(())
     }
 }

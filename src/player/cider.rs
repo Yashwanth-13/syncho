@@ -1,10 +1,11 @@
-use std::{hint::select_unpredictable, thread::sleep, time::Duration};
+use std::{thread::sleep, time::Duration};
 
 use cider_api::{CiderClient, CiderError};
 
 use dict::{Dict, DictIface};
 use serde::Deserialize;
-use strsim::jaro_winkler;
+use strsim::{normalized_levenshtein};
+use unicode_normalization::UnicodeNormalization;
 use super::types::*;
 
 #[derive(Debug, Deserialize)]
@@ -48,8 +49,25 @@ impl CiderControl {
         CiderControl { cider: CiderClient::new().with_token(token) }
     }
 
+    fn is_combining_mark(c: char) -> bool {
+        // Combining Diacritical Marks block: U+0300–U+036F
+        matches!(c, '\u{0300}'..='\u{036F}')
+    }
     fn normalize(s: &str) -> String {
-        let lower = s.to_lowercase();
+        let deaccented: String = s
+        .nfd()
+        .filter(|c| !CiderControl::is_combining_mark(*c))
+        .collect();
+
+        // 2. Lowercase
+        let lower = deaccented.to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
         let paren_stripped = match lower.find('(') {
             Some(idx) => lower[..idx].trim().to_string(),
             None => lower,
@@ -67,13 +85,13 @@ impl CiderControl {
         target_artist: &str,
         target_album: &str,
     ) -> f64 {
-        let song_sim = jaro_winkler(&CiderControl::normalize(&candidate.name), &CiderControl::normalize(target_song));
-        let artist_sim = jaro_winkler(&CiderControl::normalize(&candidate.artist_name), &CiderControl::normalize(target_artist));
-        let album_sim = jaro_winkler(&CiderControl::normalize(&candidate.album_name), &CiderControl::normalize(target_album));
+        let min_song_changes = normalized_levenshtein(&CiderControl::normalize(&candidate.name), &CiderControl::normalize(target_song));
+        let min_artist_changes = normalized_levenshtein(&CiderControl::normalize(&candidate.artist_name), &CiderControl::normalize(target_artist));
+        let min_album_changes = normalized_levenshtein(&CiderControl::normalize(&candidate.album_name), &CiderControl::normalize(target_album));
 
-        let score = song_sim * 0.4 + artist_sim * 0.45 + album_sim * 0.15;
+        let score = min_song_changes * 0.4 + min_artist_changes * 0.45 + min_album_changes * 0.15;
         println!("Score: {}; Song: {}; Artist: {}; Album: {}", score, &candidate.name, &candidate.artist_name, &candidate.album_name);
-        println!("Score: {}; Song: {}; Artist: {}; Album: {}\n", score, song_sim, artist_sim, album_sim);
+        println!("Score: {}; Song: {}; Artist: {}; Album: {}\n", score, min_song_changes, min_artist_changes, min_album_changes);
         score
 
     }
@@ -123,23 +141,6 @@ impl CiderControl {
         }
     }
 
-    pub async fn play(&self, song: &Song) {
-        let song_id = self.get_id(song).await;
-        
-        if let Some(id) = song_id {
-            println!("{:?}", id);
-            self.cider.play_item("songs", &id).await;
-        }
-    }
-
-    pub async fn play_later(&self, song: &Song) {
-        let song_id = self.get_id(song).await;
-        
-        if let Some(id) = song_id {
-            println!("{:?}", id);
-            self.cider.play_later("songs", &id).await;
-        }
-    }
     pub async fn get_current_song(&self) -> Option<Dict::<String>> {
         if let Some(track)  = self.cider.now_playing().await.unwrap() {
             let mut song_attr = Dict::<String>::new();
@@ -153,12 +154,34 @@ impl CiderControl {
         }
     }
 
+    pub async fn play(&self, song: &Song) -> Result<(), CiderError> {
+        let song_id = self.get_id(song).await.unwrap();
+        println!("{:?}", song_id);
+        self.cider.play_item("songs", &song_id).await
+    }
+
+    pub async fn play_later(&self, song: &Song) ->  Result<(), CiderError> {
+        let song_id = self.get_id(song).await.unwrap();
+        println!("{:?}", song_id);
+        self.cider.play_later("songs", &song_id).await
+    }
+
     pub async fn play_pause(&self) -> Result<(), CiderError> {
         self.cider.play_pause().await
     }
 
     pub async fn previous(&self) -> Result<(), CiderError> {
         self.cider.previous().await
+    }
+
+    pub async fn next(&self) -> Result<(), CiderError> {
+        self.cider.next().await
+    }
+
+    pub async fn play_next(&self, song: &Song) -> Result<(), CiderError> {
+        let song_id = self.get_id(song).await.unwrap();
+        println!("{:?}", song_id);
+        self.cider.play_next("songs", &song_id).await
     }
 
 }

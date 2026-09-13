@@ -64,22 +64,6 @@ impl PlayState {
         }
     }
 
-
-
-        // TODO - REPL
-    pub async fn play_pause(&mut self) {
-        match &mut self.player {
-            Player::Cider(client) => {
-                client.play_pause().await;
-            },
-            Player::Spotify(client) => {
-                if let Err(e) = client.play_pause().await {
-                    eprintln!("Spotify play_pause failed: {}", e);
-                }
-            }
-        }
-    }
-
     
     pub async fn play(&mut self, song: Song) {
         match &mut self.player {
@@ -88,7 +72,7 @@ impl PlayState {
             },
             Player::Spotify(client) => {
                 if let Err(e) = client.play(&song).await {
-                    eprintln!("Spotify play failed: {}", e);
+                    eprintln!("Spotify implementation failed: {}", e);
                 }
             }
         }
@@ -103,7 +87,67 @@ impl PlayState {
             // TODO - Spotify
             Player::Spotify(client) => {
                 if let Err(e) = client.play(&song).await {
-                    eprintln!("Spotify play failed: {}", e);
+                    eprintln!("Spotify implementation failed: {}", e);
+                }
+            }
+        }
+    }
+
+    pub async fn play_pause(&mut self) {
+        match &mut self.player {
+            Player::Cider(client) => {
+                client.play_pause().await;
+            },
+
+            // TODO - Spotify
+            Player::Spotify(client) => {
+                if let Err(e) = client.play_pause().await {
+                    eprintln!("Spotify implementation failed: {}", e);
+                }
+            }
+        }
+    }
+
+    pub async fn previous(&mut self) {
+        match &mut self.player {
+            Player::Cider(client) => {
+                client.previous().await;
+            },
+
+            // TODO - Spotify
+            Player::Spotify(client) => {
+                if let Err(e) = client.play_pause().await {
+                    eprintln!("Spotify implementation failed: {}", e);
+                }
+            }
+        }
+    }
+
+    pub async fn next(&mut self) {
+        match &mut self.player {
+            Player::Cider(client) => {
+                client.next().await;
+            },
+
+            // TODO - Spotify
+            Player::Spotify(client) => {
+                if let Err(e) = client.play_pause().await {
+                    eprintln!("Spotify implementation failed: {}", e);
+                }
+            }
+        }
+    }
+
+    pub async fn play_next(&mut self, song: Song) {
+        match &mut self.player {
+            Player::Cider(client) => {
+                client.play_next(&song).await;
+            },
+
+            // TODO - Spotify
+            Player::Spotify(client) => {
+                if let Err(e) = client.play_pause().await {
+                    eprintln!("Spotify implementation failed: {}", e);
                 }
             }
         }

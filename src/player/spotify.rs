@@ -259,8 +259,8 @@ impl SpotifyPlayer {
         Ok(())
     }
     
-    async fn search_track(&mut self, track: &str, artist: &str) -> Result<String> {
-        let query = format!("track:{} artist:{}", track, artist);
+    async fn search_track(&mut self, track: &str, album: &str,artist: &str) -> Result<String> {
+        let query = format!("track:{} album:{} artist:{}", track,album, artist);
 
         let resp = self
             .client

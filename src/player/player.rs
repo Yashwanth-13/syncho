@@ -31,10 +31,6 @@ impl PlayState {
     }
 
     pub async fn get_current_song(&mut self) -> Option<Song> {
-        if !self.is_playing {
-            return None;
-        }
-
         match &mut self.player {
             Player::Cider(client) => {
                 let result = client.get_current_song().await;
@@ -43,8 +39,16 @@ impl PlayState {
                     let artist_name = song_attr.get("artist_name").unwrap().to_string();
                     let album_name = song_attr.get("album_name").unwrap().to_string();
                     let current_position_seconds = song_attr.get("position").unwrap().to_string();
-                    Some(Song { song_name: song_name, artist_name: artist_name, album_name: album_name, time_started: SystemTime::now().checked_sub(Duration::from_secs(current_position_seconds.parse().unwrap())).unwrap() })
+                    let pos_secs = current_position_seconds.parse::<u64>().unwrap_or(0);
+                    self.is_playing = true;
+                    Some(Song {
+                        song_name,
+                        artist_name,
+                        album_name,
+                        time_started: SystemTime::now().checked_sub(Duration::from_secs(pos_secs)).unwrap_or(SystemTime::now()),
+                    })
                 } else {
+                    self.is_playing = false;
                     None
                 }
             },
@@ -56,8 +60,16 @@ impl PlayState {
                     let artist_name = song_attr.get("artist_name").unwrap().to_string();
                     let album_name = song_attr.get("album_name").unwrap().to_string();
                     let current_position_seconds = song_attr.get("position").unwrap().to_string();
-                    Some(Song { song_name: song_name, artist_name: artist_name, album_name: album_name, time_started: SystemTime::now().checked_sub(Duration::from_secs(current_position_seconds.parse().unwrap())).unwrap() })
+                    let pos_secs = current_position_seconds.parse::<u64>().unwrap_or(0);
+                    self.is_playing = true;
+                    Some(Song {
+                        song_name,
+                        artist_name,
+                        album_name,
+                        time_started: SystemTime::now().checked_sub(Duration::from_secs(pos_secs)).unwrap_or(SystemTime::now()),
+                    })
                 } else {
+                    self.is_playing = false;
                     None
                 }
             }

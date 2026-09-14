@@ -90,15 +90,8 @@ impl SpotifyPlayer {
         Ok(())
     }
 
-    fn is_expired_token_error(status: StatusCode, body: &Value) -> bool {
-        if status != StatusCode::UNAUTHORIZED {
-            return false;
-        }
-        body.get("error")
-            .and_then(|e| e.get("message"))
-            .and_then(|m| m.as_str())
-            .map(|m| m.to_lowercase().contains("expired") || m.to_lowercase().contains("invalid"))
-            .unwrap_or(false)
+    fn is_expired_token_error(status: StatusCode, _body: &Value) -> bool {
+        status == StatusCode::UNAUTHORIZED
     }
 
     fn parse_song(body: &Value) -> Option<HashMap<String, String>> {

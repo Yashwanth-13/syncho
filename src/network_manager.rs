@@ -304,6 +304,7 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
                 album_name,
                 time_started: SystemTime::now(),
             };
+            println!("[syncho] ⏮ Skipping to previous song: {} — {}", song.song_name, song.artist_name);
             ps.play(song).await;
         }
 

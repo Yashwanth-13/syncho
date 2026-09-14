@@ -146,13 +146,21 @@ impl PlayPreviousHandler {
         
         tokio::time::sleep(std::time::Duration::from_millis(800)).await;
 
-        let curr_song = play_state.lock().unwrap().get_current_song().await;
+        let mut curr_song = play_state.lock().unwrap().get_current_song().await;
+        if curr_song.is_none() {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            curr_song = play_state.lock().unwrap().get_current_song().await;
+        }
+
         if let Some(song) = curr_song {
-                self.broadcaster.broadcast(NetworkMessage::Next {
+            println!("[syncho] Playing previous song: {} — {}", song.song_name, song.artist_name);
+            self.broadcaster.broadcast(NetworkMessage::Previous {
                 song_name: song.song_name.clone(),
                 artist_name: song.artist_name.clone(),
                 album_name: song.album_name.clone(),
             });
+        } else {
+            println!("[syncho] Skipped to previous track (no track details returned).");
         }
         Ok(CommandStatus::Done)
     }
@@ -182,13 +190,21 @@ impl NextHandler {
         
         tokio::time::sleep(std::time::Duration::from_millis(800)).await;
         
-        let curr_song = play_state.lock().unwrap().get_current_song().await;
+        let mut curr_song = play_state.lock().unwrap().get_current_song().await;
+        if curr_song.is_none() {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            curr_song = play_state.lock().unwrap().get_current_song().await;
+        }
+
         if let Some(song) = curr_song {
-                self.broadcaster.broadcast(NetworkMessage::Next {
+            println!("[syncho] Playing next song: {} — {}", song.song_name, song.artist_name);
+            self.broadcaster.broadcast(NetworkMessage::Next {
                 song_name: song.song_name.clone(),
                 artist_name: song.artist_name.clone(),
                 album_name: song.album_name.clone(),
             });
+        } else {
+            println!("[syncho] Skipped to next track (no track details returned).");
         }
         Ok(CommandStatus::Done)
     }

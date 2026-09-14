@@ -169,7 +169,15 @@ impl NextHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let play_state = Arc::clone(&self.play_state);
         play_state.lock().unwrap().next().await;
-        self.broadcaster.broadcast(NetworkMessage::Next);
+
+
+        
+
+        self.broadcaster.broadcast(NetworkMessage::Next {
+            song_name: song.song_name.clone(),
+            artist_name: song.artist_name.clone(),
+            album_name: song.album_name.clone(),
+        })
         Ok(CommandStatus::Done)
     }
 }

@@ -39,10 +39,18 @@ pub enum NetworkMessage {
     PlayPause,
 
     /// Host → Clients: skip to next track.
-    Next,
+    Next {
+        song_name: String,
+        artist_name: String, 
+        album_name: String
+    },
 
     /// Host → Clients: go back to previous track.
-    Previous,
+    Previous {
+        song_name: String,
+        artist_name: String, 
+        album_name: String
+    },
 
 
     /// Host → Clients: add this song to end of queue.
@@ -270,14 +278,32 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
             ps.play_pause().await;
         }
 
-        NetworkMessage::Next => {
-            println!("[syncho] ⏭ Next");
-            ps.next().await;
+        NetworkMessage::Next {
+            song_name,
+            artist_name, 
+            album_name
+        } => {
+            let song = Song {
+                song_name,
+                artist_name,
+                album_name,
+                time_started: SystemTime::now(),
+            };
+            ps.play(song).await;
         }
 
-        NetworkMessage::Previous => {
-            println!("[syncho] ⏮ Previous");
-            ps.previous().await;
+        NetworkMessage::Previous {
+            song_name,
+            artist_name, 
+            album_name
+        } => {
+            let song = Song {
+                song_name,
+                artist_name,
+                album_name,
+                time_started: SystemTime::now(),
+            };
+            ps.play(song).await;
         }
 
         NetworkMessage::PlayLater {

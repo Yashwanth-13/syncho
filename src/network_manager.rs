@@ -1,6 +1,4 @@
 use std::sync::Arc;
-use std::time::SystemTime;
-
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -9,67 +7,22 @@ use tokio::sync::{broadcast, Mutex};
 use crate::player::player::PlayState;
 use crate::player::types::Song;
 
-// ---------------------------------------------------------------------------
-// Wire protocol – newline-delimited JSON
-// ---------------------------------------------------------------------------
 
-/// Every message sent over the wire is one of these variants.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum NetworkMessage {
-    /// Client → Host: first message after connect, carries the session code.
     Auth { code: String },
-
-    /// Host → Client: authentication succeeded, you're in.
     AuthOk,
-
-    /// Host → Client: wrong code, connection will be closed.
     AuthFail,
-
-    /// Host → Clients: start playing this song now.
-    Play {
-        song_name: String,
-        artist_name: String,
-        album_name: String,
-        /// Unix timestamp (secs) when the song started on the host.
-        started_at_secs: u64,
-    },
-
-    /// Host → Clients: toggle play / pause.
+    Play(Song),
     PlayPause,
-
-    /// Host → Clients: skip to next track.
-    Next {
-        song_name: String,
-        artist_name: String, 
-        album_name: String
-    },
-
-    /// Host → Clients: go back to previous track.
-    Previous {
-        song_name: String,
-        artist_name: String, 
-        album_name: String
-    },
-
-
-    /// Host → Clients: add this song to end of queue.
-    PlayLater {
-        song_name: String,
-        artist_name: String,
-        album_name: String,
-    },
-
-    /// Host → Clients: queue this song to play after the current one.
-    PlayNext {
-        song_name: String,
-        artist_name: String,
-        album_name: String,
-    },
+    Next(Song),
+    Previous(Song),
+    PlayLater(Song),
+    PlayNext(Song),
 }
 
 impl NetworkMessage {
-    /// Serialize to a newline-terminated JSON string ready to send over the wire.
     pub fn to_wire(&self) -> String {
         let mut s = serde_json::to_string(self).expect("serialization is infallible");
         s.push('\n');
@@ -77,11 +30,7 @@ impl NetworkMessage {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Host side
-// ---------------------------------------------------------------------------
 
-/// A cloneable handle the REPL uses to broadcast events to every connected client.
 #[derive(Clone)]
 pub struct HostBroadcaster {
     tx: broadcast::Sender<NetworkMessage>,
@@ -94,8 +43,7 @@ impl HostBroadcaster {
     }
 }
 
-/// Bind a TCP listener on `0.0.0.0:8080`, spawn a background task that
-/// accepts clients and validates them against `session_code`.
+
 /// Returns a [`HostBroadcaster`] you can call from the REPL to push events.
 pub async fn start_host(
     listener: TcpListener,
@@ -131,7 +79,7 @@ async fn accept_loop(
     }
 }
 
-/// Authenticate a single client then pump broadcast messages to it.
+
 async fn handle_client(
     stream: TcpStream,
     session_code: Arc<String>,
@@ -186,12 +134,9 @@ async fn handle_client(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Client side
-// ---------------------------------------------------------------------------
 
-/// Connect to `host_addr` (e.g. `"192.168.1.5:8080"`), authenticate with
-/// `session_code`, then listen for events and apply them to `play_state`.
+
+// Client side
 pub async fn join_session(
     host_addr: &str,
     session_code: &str,
@@ -256,84 +201,32 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
     let mut ps = play_state.lock().await;
 
     match msg {
-        NetworkMessage::Play {
-            song_name,
-            artist_name,
-            album_name,
-            started_at_secs,
-        } => {
-            let song = Song {
-                song_name,
-                artist_name,
-                album_name,
-                time_started: SystemTime::UNIX_EPOCH
-                    + std::time::Duration::from_secs(started_at_secs),
-            };
-            println!("[syncho] ▶ Playing: {} — {}", song.song_name, song.artist_name);
+        NetworkMessage::Play(song) => {
+            println!("[syncho] Playing: {} — {}", song.song_name, song.artist_name);
             ps.play(song).await;
         }
 
         NetworkMessage::PlayPause => {
-            println!("[syncho] ⏯ Play/Pause");
+            println!("[syncho] Play/Pause");
             ps.play_pause().await;
         }
 
-        NetworkMessage::Next {
-            song_name,
-            artist_name, 
-            album_name
-        } => {
-            let song = Song {
-                song_name,
-                artist_name,
-                album_name,
-                time_started: SystemTime::now(),
-            };
-            println!("[syncho] + Skipping to next song {}", song.song_name);
+        NetworkMessage::Next(song)=> {
+            println!("[syncho] Skipping to next song {}", song.song_name);
             ps.play(song).await;
         }
 
-        NetworkMessage::Previous {
-            song_name,
-            artist_name, 
-            album_name
-        } => {
-            let song = Song {
-                song_name,
-                artist_name,
-                album_name,
-                time_started: SystemTime::now(),
-            };
-            println!("[syncho] ⏮ Skipping to previous song: {} — {}", song.song_name, song.artist_name);
+        NetworkMessage::Previous(song) => {
+            println!("[syncho] Skipping to previous song: {} — {}", song.song_name, song.artist_name);
             ps.play(song).await;
         }
 
-        NetworkMessage::PlayLater {
-            song_name,
-            artist_name,
-            album_name,
-        } => {
-            let song = Song {
-                song_name,
-                artist_name,
-                album_name,
-                time_started: SystemTime::now(),
-            };
-            println!("[syncho] + Queue later: {}", song.song_name);
+        NetworkMessage::PlayLater(song)=> {
+            println!("[syncho] Queue later: {}", song.song_name);
             ps.play_later(song).await;
         }
 
-        NetworkMessage::PlayNext {
-            song_name,
-            artist_name,
-            album_name,
-        } => {
-            let song = Song {
-                song_name,
-                artist_name,
-                album_name,
-                time_started: SystemTime::now(),
-            };
+        NetworkMessage::PlayNext(song)=> {
             println!("[syncho] + Play next: {}", song.song_name);
             ps.play_next(song).await;
         }

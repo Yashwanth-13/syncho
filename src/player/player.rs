@@ -1,7 +1,4 @@
 use super::types::*;
-use super::cider::*;
-use dict::DictIface;
-use std::time::{Duration, SystemTime};
 pub use crate::player::types::PlayState;
 use super::spotify::SpotifyPlayer;
 
@@ -27,30 +24,14 @@ impl PlayState {
             is_playing: false,
             player,
             current_song: None,
+            queue_size: 0
         }
     }
 
     pub async fn get_current_song(&mut self) -> Option<Song> {
         match &mut self.player {
             Player::Cider(client) => {
-                let result = client.get_current_song().await;
-                if let Some(song_attr) = result {
-                    let song_name = song_attr.get("song_name").unwrap().to_string();
-                    let artist_name = song_attr.get("artist_name").unwrap().to_string();
-                    let album_name = song_attr.get("album_name").unwrap().to_string();
-                    let current_position_seconds = song_attr.get("position").unwrap().to_string();
-                    let pos_secs = current_position_seconds.parse::<u64>().unwrap_or(0);
-                    self.is_playing = true;
-                    Some(Song {
-                        song_name,
-                        artist_name,
-                        album_name,
-                        time_started: SystemTime::now().checked_sub(Duration::from_secs(pos_secs)).unwrap_or(SystemTime::now()),
-                    })
-                } else {
-                    self.is_playing = false;
-                    None
-                }
+                client.get_current_song().await
             },
 
             Player::Spotify(client) => {
@@ -66,7 +47,7 @@ impl PlayState {
                         song_name,
                         artist_name,
                         album_name,
-                        time_started: SystemTime::now().checked_sub(Duration::from_secs(pos_secs)).unwrap_or(SystemTime::now()),
+                        position: pos_secs
                     })
                 } else {
                     self.is_playing = false;

@@ -4,17 +4,20 @@ mod helpers;
 mod player;
 mod repl;
 
-use std::{sync::Arc};
+use std::sync::Arc;
 
-use tokio::{net::TcpListener};
+use tokio::{net::TcpListener, sync::Mutex};
 
-use clap::{Parser};
-use crate::{helpers::{generate_numeric_code, get_input}, player::{player::PlayState, types::{Config, Player, Song}}};
+use clap::Parser;
+use crate::{
+    helpers::{generate_numeric_code, get_input},
+    network_manager::{join_session, start_host},
+    player::{player::PlayState, types::Config},
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Args {
-
     #[arg(long = "host")]
     host: bool,
 
@@ -29,15 +32,22 @@ async fn main() {
     let args = Args::parse();
     if args.host {
         let code = Arc::new(generate_numeric_code());
-        println!("{}", code);
-        
-        let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
+        println!("Session code: {}", code);
 
-        // TODO - handle_connection
-        
+        let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
         println!("Listening on {}", listener.local_addr().unwrap());
-        repl::looper(code.clone().to_string(), PlayState::new(&config)).await;
+
+        let broadcaster = start_host(listener, Arc::clone(&code)).await;
+
+        repl::looper(code.to_string(), PlayState::new(&config), broadcaster).await;
     } else if args.join {
         let code = get_input(&"Session Code".to_string(), false);
+        let host_addr = get_input(&"Host IP:Port (e.g. 192.168.1.5:8080)".to_string(), false);
+
+        let play_state = Arc::new(Mutex::new(PlayState::new(&config)));
+
+        if let Err(e) = join_session(&host_addr, &code, play_state).await {
+            eprintln!("[syncho] Failed to join session: {}", e);
+        }
     }
 }

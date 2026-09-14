@@ -10,6 +10,7 @@ use mini_async_repl::{
 };
 
 use crate::helpers::get_input;
+use crate::network_manager::{HostBroadcaster, NetworkMessage};
 use crate::player::player::PlayState;
 use crate::player::types::Song;
 
@@ -44,13 +45,14 @@ impl ExecuteCommand for CodeHandler {
 // "pp" command: play-pause the player
 struct PlayPauseHandler {
     play_state: Arc<Mutex<PlayState>>,
+    broadcaster: HostBroadcaster,
 }
 
 impl PlayPauseHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let play_state = Arc::clone(&self.play_state);
         play_state.lock().unwrap().play_pause().await;
-
+        self.broadcaster.broadcast(NetworkMessage::PlayPause);
         Ok(CommandStatus::Done)
     }
 }
@@ -68,14 +70,24 @@ impl ExecuteCommand for PlayPauseHandler {
 // --- "ps" command: play a specific song ---
 struct PlaySongHandler {
     play_state: Arc<Mutex<PlayState>>,
+    broadcaster: HostBroadcaster,
 }
 
 impl PlaySongHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        let song_to_play = get_song();
+        let song = get_song();
+        let started_at_secs = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        self.broadcaster.broadcast(NetworkMessage::Play {
+            song_name: song.song_name.clone(),
+            artist_name: song.artist_name.clone(),
+            album_name: song.album_name.clone(),
+            started_at_secs,
+        });
         let play_state = Arc::clone(&self.play_state);
-        play_state.lock().unwrap().play(song_to_play).await;
-
+        play_state.lock().unwrap().play(song).await;
         Ok(CommandStatus::Done)
     }
 }
@@ -93,14 +105,19 @@ impl ExecuteCommand for PlaySongHandler {
 // --- "pl" command: play a specific song later
 struct PlayLaterHandler {
     play_state: Arc<Mutex<PlayState>>,
+    broadcaster: HostBroadcaster,
 }
 
 impl PlayLaterHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        let song_to_play = get_song();
+        let song = get_song();
+        self.broadcaster.broadcast(NetworkMessage::PlayLater {
+            song_name: song.song_name.clone(),
+            artist_name: song.artist_name.clone(),
+            album_name: song.album_name.clone(),
+        });
         let play_state = Arc::clone(&self.play_state);
-        play_state.lock().unwrap().play_later(song_to_play).await;
-
+        play_state.lock().unwrap().play_later(song).await;
         Ok(CommandStatus::Done)
     }
 }
@@ -119,13 +136,14 @@ impl ExecuteCommand for PlayLaterHandler {
 // -- previous command: Play a previous song
 struct PlayPreviousHandler {
     play_state: Arc<Mutex<PlayState>>,
+    broadcaster: HostBroadcaster,
 }
 
 impl PlayPreviousHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let play_state = Arc::clone(&self.play_state);
         play_state.lock().unwrap().previous().await;
-
+        self.broadcaster.broadcast(NetworkMessage::Previous);
         Ok(CommandStatus::Done)
     }
 }
@@ -144,13 +162,14 @@ impl ExecuteCommand for PlayPreviousHandler {
 // -- next command: Skip song to next one
 struct NextHandler {
     play_state: Arc<Mutex<PlayState>>,
+    broadcaster: HostBroadcaster,
 }
 
 impl NextHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let play_state = Arc::clone(&self.play_state);
         play_state.lock().unwrap().next().await;
-
+        self.broadcaster.broadcast(NetworkMessage::Next);
         Ok(CommandStatus::Done)
     }
 }
@@ -170,14 +189,19 @@ impl ExecuteCommand for NextHandler {
 
 struct PlayNextHandler {
     play_state: Arc<Mutex<PlayState>>,
+    broadcaster: HostBroadcaster,
 }
 
 impl PlayNextHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let song = get_song();
+        self.broadcaster.broadcast(NetworkMessage::PlayNext {
+            song_name: song.song_name.clone(),
+            artist_name: song.artist_name.clone(),
+            album_name: song.album_name.clone(),
+        });
         let play_state = Arc::clone(&self.play_state);
         play_state.lock().unwrap().play_next(song).await;
-
         Ok(CommandStatus::Done)
     }
 }
@@ -193,7 +217,7 @@ impl ExecuteCommand for PlayNextHandler {
 }
 // --
 
-pub async fn looper(code: String, play_state: PlayState) {
+pub async fn looper(code: String, play_state: PlayState, broadcaster: HostBroadcaster) {
     let play_state = Arc::new(Mutex::new(play_state));
     let mut repl = Repl::builder()
         .add("code", Command::new(
@@ -208,6 +232,7 @@ pub async fn looper(code: String, play_state: PlayState) {
             vec![],
             Box::new(PlaySongHandler {
                 play_state: Arc::clone(&play_state),
+                broadcaster: broadcaster.clone(),
             }),
         ))
         .add("pp", Command::new(
@@ -215,6 +240,15 @@ pub async fn looper(code: String, play_state: PlayState) {
             vec![],
             Box::new(PlayPauseHandler {
                 play_state: Arc::clone(&play_state),
+                broadcaster: broadcaster.clone(),
+            })
+        ))
+        .add("pl", Command::new(
+            "Queue a song to play later (end of queue)",
+            vec![],
+            Box::new(PlayLaterHandler {
+                play_state: Arc::clone(&play_state),
+                broadcaster: broadcaster.clone(),
             })
         ))
         .add("previous", Command::new(
@@ -222,6 +256,7 @@ pub async fn looper(code: String, play_state: PlayState) {
             vec![],
             Box::new(PlayPreviousHandler {
                 play_state: Arc::clone(&play_state),
+                broadcaster: broadcaster.clone(),
             })
         ))
         .add("next", Command::new(
@@ -229,6 +264,7 @@ pub async fn looper(code: String, play_state: PlayState) {
             vec![],
             Box::new(NextHandler {
                 play_state: Arc::clone(&play_state),
+                broadcaster: broadcaster.clone(),
             })
         ))
         .add("pn", Command::new(
@@ -236,6 +272,7 @@ pub async fn looper(code: String, play_state: PlayState) {
             vec![],
             Box::new(PlayNextHandler {
                 play_state: Arc::clone(&play_state),
+                broadcaster: broadcaster.clone(),
             })
         ))
         .build()

@@ -275,7 +275,7 @@ impl SpotifyPlayer {
 
         if Self::is_expired_token_error(status, &body) {
             self.refresh_access_token().await?;
-            return Box::pin(self.search_track(track, artist)).await;
+            return Box::pin(self.search_track(track,album, artist)).await;
         }
 
         if !status.is_success() {
@@ -294,7 +294,7 @@ impl SpotifyPlayer {
     }
 
     pub async fn play(&mut self, song: &Song) -> Result<()> {
-        let track_id = self.search_track(&song.song_name, &song.artist_name).await?;
+        let track_id = self.search_track(&song.song_name, &song.album_name, &song.artist_name).await?;
         let uri = format!("spotify:track:{}", track_id);
 
         let resp = self
@@ -321,7 +321,7 @@ impl SpotifyPlayer {
 
 
     pub async fn add_to_queue(&mut self, song: &Song) -> Result<()> {
-        let track_id = self.search_track(&song.song_name, &song.artist_name).await?;
+        let track_id = self.search_track(&song.song_name,&song.album_name, &song.artist_name).await?;
         let uri = format!("spotify:track:{}", track_id);
 
         let resp = self

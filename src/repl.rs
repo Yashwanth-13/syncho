@@ -143,6 +143,8 @@ impl PlayPreviousHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let play_state = Arc::clone(&self.play_state);
         play_state.lock().unwrap().previous().await;
+        
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
 
         let curr_song = play_state.lock().unwrap().get_current_song().await;
         if let Some(song) = curr_song {
@@ -177,7 +179,9 @@ impl NextHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let play_state = Arc::clone(&self.play_state);
         play_state.lock().unwrap().next().await;
-
+        
+        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+        
         let curr_song = play_state.lock().unwrap().get_current_song().await;
         if let Some(song) = curr_song {
                 self.broadcaster.broadcast(NetworkMessage::Next {

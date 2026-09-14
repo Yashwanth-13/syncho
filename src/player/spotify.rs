@@ -168,6 +168,7 @@ impl SpotifyPlayer {
 
         Self::parse_song(&body)
     }
+
     pub async fn previous(&mut self) -> Result<()> {
         let resp = self
             .client
@@ -192,6 +193,7 @@ impl SpotifyPlayer {
 
         Ok(())
     }
+
     pub async fn next(&mut self) -> Result<()> {
         let resp = self
             .client
@@ -230,40 +232,41 @@ impl SpotifyPlayer {
         if status == StatusCode::NO_CONTENT {
             // Nothing playing at all; nothing to toggle.
             return Ok(());
+        }
+
+        let body: Value = resp.json().await?;
+
+        if Self::is_expired_token_error(status, &body) {
+            self.refresh_access_token().await?;
+            return Box::pin(self.play_pause()).await;
+        }
+
+        let is_playing = body.get("is_playing").and_then(|v| v.as_bool()).unwrap_or(false);
+
+        let endpoint = if is_playing {
+            "https://api.spotify.com/v1/me/player/pause"
+        } else {
+            "https://api.spotify.com/v1/me/player/play"
+        };
+
+        let resp = self
+            .client
+            .put(endpoint)
+            .bearer_auth(&self.access_token)
+            .header(reqwest::header::CONTENT_LENGTH, "0")
+            .body(Vec::new())
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() && status != StatusCode::NO_CONTENT {
+            return Err(anyhow!("failed to toggle playback ({})", status));
+        }
+
+        Ok(())
     }
-
-    let body: Value = resp.json().await?;
-
-    if Self::is_expired_token_error(status, &body) {
-        self.refresh_access_token().await?;
-        return Box::pin(self.play_pause()).await;
-    }
-
-    let is_playing = body.get("is_playing").and_then(|v| v.as_bool()).unwrap_or(false);
-
-    let endpoint = if is_playing {
-        "https://api.spotify.com/v1/me/player/pause"
-    } else {
-        "https://api.spotify.com/v1/me/player/play"
-    };
-
-    let resp = self
-        .client
-        .put(endpoint)
-        .bearer_auth(&self.access_token)
-        .header(reqwest::header::CONTENT_LENGTH, "0")
-        .body(Vec::new())
-        .send()
-        .await?;
-
-    let status = resp.status();
-    if !status.is_success() && status != StatusCode::NO_CONTENT {
-        return Err(anyhow!("failed to toggle playback ({})", status));
-    }
-
-    Ok(())
-}
-        async fn search_track(&mut self, track: &str, artist: &str) -> Result<String> {
+    
+    async fn search_track(&mut self, track: &str, artist: &str) -> Result<String> {
         let query = format!("track:{} artist:{}", track, artist);
 
         let resp = self

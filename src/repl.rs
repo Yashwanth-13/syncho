@@ -143,7 +143,15 @@ impl PlayPreviousHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let play_state = Arc::clone(&self.play_state);
         play_state.lock().unwrap().previous().await;
-        self.broadcaster.broadcast(NetworkMessage::Previous);
+
+        let curr_song = play_state.lock().unwrap().get_current_song().await;
+        if let Some(song) = curr_song {
+                self.broadcaster.broadcast(NetworkMessage::Next {
+                song_name: song.song_name.clone(),
+                artist_name: song.artist_name.clone(),
+                album_name: song.album_name.clone(),
+            });
+        }
         Ok(CommandStatus::Done)
     }
 }
@@ -170,14 +178,14 @@ impl NextHandler {
         let play_state = Arc::clone(&self.play_state);
         play_state.lock().unwrap().next().await;
 
-
-        
-
-        self.broadcaster.broadcast(NetworkMessage::Next {
-            song_name: song.song_name.clone(),
-            artist_name: song.artist_name.clone(),
-            album_name: song.album_name.clone(),
-        })
+        let curr_song = play_state.lock().unwrap().get_current_song().await;
+        if let Some(song) = curr_song {
+                self.broadcaster.broadcast(NetworkMessage::Next {
+                song_name: song.song_name.clone(),
+                artist_name: song.artist_name.clone(),
+                album_name: song.album_name.clone(),
+            });
+        }
         Ok(CommandStatus::Done)
     }
 }

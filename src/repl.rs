@@ -1,8 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
-
 use easy_repl::anyhow;
 use mini_async_repl::{
     command::{Command, CommandArgInfo, ExecuteCommand},
@@ -19,7 +17,7 @@ fn get_song() -> Song {
     let album_name = get_input(&"Album Name".to_string(), true);
     let artist_name = get_input(&"Artist Name".to_string(), true);
 
-    Song { song_name, artist_name, album_name, time_started: SystemTime::now() }
+    Song { song_name, artist_name, album_name, position: 0 }
 }
 
 // --- "code" command: just prints the session code ---
@@ -76,18 +74,8 @@ struct PlaySongHandler {
 impl PlaySongHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let song = get_song();
-        let started_at_secs = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        self.broadcaster.broadcast(NetworkMessage::Play {
-            song_name: song.song_name.clone(),
-            artist_name: song.artist_name.clone(),
-            album_name: song.album_name.clone(),
-            started_at_secs,
-        });
-        let play_state = Arc::clone(&self.play_state);
-        play_state.lock().unwrap().play(song).await;
+        self.broadcaster.broadcast(NetworkMessage::Play(song.clone()));
+        Arc::clone(&self.play_state).lock().unwrap().play(song).await;
         Ok(CommandStatus::Done)
     }
 }
@@ -111,13 +99,8 @@ struct PlayLaterHandler {
 impl PlayLaterHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let song = get_song();
-        self.broadcaster.broadcast(NetworkMessage::PlayLater {
-            song_name: song.song_name.clone(),
-            artist_name: song.artist_name.clone(),
-            album_name: song.album_name.clone(),
-        });
-        let play_state = Arc::clone(&self.play_state);
-        play_state.lock().unwrap().play_later(song).await;
+        self.broadcaster.broadcast(NetworkMessage::PlayLater(song.clone()));
+        Arc::clone(&self.play_state).lock().unwrap().play_later(song).await;
         Ok(CommandStatus::Done)
     }
 }
@@ -154,11 +137,7 @@ impl PlayPreviousHandler {
 
         if let Some(song) = curr_song {
             println!("[syncho] Playing previous song: {} — {}", song.song_name, song.artist_name);
-            self.broadcaster.broadcast(NetworkMessage::Previous {
-                song_name: song.song_name.clone(),
-                artist_name: song.artist_name.clone(),
-                album_name: song.album_name.clone(),
-            });
+            self.broadcaster.broadcast(NetworkMessage::Previous(song.clone()));
         } else {
             println!("[syncho] Skipped to previous track (no track details returned).");
         }
@@ -185,24 +164,15 @@ struct NextHandler {
 
 impl NextHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        let play_state = Arc::clone(&self.play_state);
-        play_state.lock().unwrap().next().await;
-        
-        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-        
-        let mut curr_song = play_state.lock().unwrap().get_current_song().await;
-        if curr_song.is_none() {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            curr_song = play_state.lock().unwrap().get_current_song().await;
-        }
+        let curr_song = Arc::clone(&self.play_state).lock().unwrap().get_current_song().await;
+        // if curr_song.is_none() {
+        //     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        //     curr_song = play_state.lock().unwrap().get_current_song().await;
+        // }
 
         if let Some(song) = curr_song {
-            println!("[syncho] Playing next song: {} — {}", song.song_name, song.artist_name);
-            self.broadcaster.broadcast(NetworkMessage::Next {
-                song_name: song.song_name.clone(),
-                artist_name: song.artist_name.clone(),
-                album_name: song.album_name.clone(),
-            });
+            println!("[syncho] Playing next song: {} — {}", &song.song_name, &song.artist_name);
+            self.broadcaster.broadcast(NetworkMessage::Next(song.clone()));
         } else {
             println!("[syncho] Skipped to next track (no track details returned).");
         }
@@ -222,7 +192,6 @@ impl ExecuteCommand for NextHandler {
 // --
 
 // -- pn command: Play a specific song next
-
 struct PlayNextHandler {
     play_state: Arc<Mutex<PlayState>>,
     broadcaster: HostBroadcaster,
@@ -231,11 +200,7 @@ struct PlayNextHandler {
 impl PlayNextHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let song = get_song();
-        self.broadcaster.broadcast(NetworkMessage::PlayNext {
-            song_name: song.song_name.clone(),
-            artist_name: song.artist_name.clone(),
-            album_name: song.album_name.clone(),
-        });
+        self.broadcaster.broadcast(NetworkMessage::PlayNext(song.clone()));
         let play_state = Arc::clone(&self.play_state);
         play_state.lock().unwrap().play_next(song).await;
         Ok(CommandStatus::Done)

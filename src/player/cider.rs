@@ -2,7 +2,6 @@ use std::{thread::sleep, time::Duration};
 
 use cider_api::{CiderClient, CiderError};
 
-use dict::{Dict, DictIface};
 use serde::Deserialize;
 use strsim::{normalized_levenshtein};
 use unicode_normalization::UnicodeNormalization;
@@ -141,14 +140,9 @@ impl CiderControl {
         }
     }
 
-    pub async fn get_current_song(&self) -> Option<Dict::<String>> {
+    pub async fn get_current_song(&self) -> Option<Song> {
         if let Some(track)  = self.cider.now_playing().await.unwrap() {
-            let mut song_attr = Dict::<String>::new();
-            song_attr.add("song_name".to_string(), track.name);
-            song_attr.add("artist_name".to_string(), track.artist_name);
-            song_attr.add("album_name".to_string(), track.album_name);
-            song_attr.add("position".to_string(), track.current_playback_time.to_string());
-            Some(song_attr)
+            Some(Song{song_name: track.name.clone(), artist_name: track.artist_name.clone(), album_name: track.album_name.clone(), position: track.current_position_ms()})
         } else {
             None
         }

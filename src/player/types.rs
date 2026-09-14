@@ -1,4 +1,3 @@
-use std::time::{SystemTime};
 use cider_api::{CiderClient};
 use serde::{self, Deserialize, Serialize};
 use super::spotify::SpotifyPlayer;
@@ -11,7 +10,8 @@ pub struct CiderControl {
 pub struct PlayState {
     pub is_playing: bool,
     pub player: Player,
-    pub current_song: Option<Song>
+    pub current_song: Option<Song>,
+    pub queue_size: u64
 }
 
 
@@ -34,9 +34,11 @@ pub enum Player {
     Spotify(SpotifyPlayer),
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Song {
     pub song_name: String,
     pub artist_name: String,
     pub album_name: String,
-    pub time_started: SystemTime
+    // pub time_started: SystemTime
+    pub position: u64
 }

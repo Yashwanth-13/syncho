@@ -42,7 +42,7 @@ async fn main() {
         repl::looper(code.to_string(), PlayState::new(&config), broadcaster).await;
     } else if args.join {
         let code = get_input(&"Session Code".to_string(), false);
-        let host_addr = get_input(&"Host IP:Port (e.g. 192.168.1.5:8080)".to_string(), false);
+        let host_addr = format!("{}:8080", get_input(&"Host IP:Port (e.g. 192.168.1.5)".to_string(), false));
 
         let play_state = Arc::new(Mutex::new(PlayState::new(&config)));
 

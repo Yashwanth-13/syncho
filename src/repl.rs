@@ -164,7 +164,10 @@ struct NextHandler {
 
 impl NextHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        let curr_song = Arc::clone(&self.play_state).lock().unwrap().get_current_song().await;
+        let play_state = Arc::clone(&self.play_state);
+        play_state.lock().unwrap().next().await;
+        
+        let curr_song = play_state.lock().unwrap().get_current_song().await;
         // if curr_song.is_none() {
         //     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         //     curr_song = play_state.lock().unwrap().get_current_song().await;

@@ -27,11 +27,18 @@ impl PlayState {
             queue_size: 0
         }
     }
-
-    pub async fn get_current_song(&mut self) -> Option<Song> {
-        match &mut self.player {
+    
+    async fn set_current_song(playstate: &mut PlayState) {
+        match &mut playstate.player {
             Player::Cider(client) => {
-                client.get_current_song().await
+                let result = client.get_current_song().await;
+                if let Some(current_song)  = result {
+                    playstate.current_song = Some(current_song);
+                    playstate.is_playing = true;
+                } else {
+                    playstate.current_song = None;
+                    playstate.is_playing = false;
+                }
             },
 
             Player::Spotify(client) => {
@@ -42,30 +49,39 @@ impl PlayState {
                     let album_name = song_attr.get("album_name").unwrap().to_string();
                     let current_position_seconds = song_attr.get("position").unwrap().to_string();
                     let pos_secs = current_position_seconds.parse::<u64>().unwrap_or(0);
-                    self.is_playing = true;
-                    Some(Song {
+                    playstate.is_playing = true;
+                    playstate.current_song = Some(Song {
                         song_name,
                         artist_name,
                         album_name,
                         position: pos_secs
-                    })
+                    });
                 } else {
-                    self.is_playing = false;
-                    None
+                    playstate.current_song = None;
+                    playstate.is_playing = false;
                 }
             }
         }
+    }
+
+
+    pub async fn get_current_song(&self) -> Option<Song> {
+        self.current_song.clone()
     }
 
     
     pub async fn play(&mut self, song: Song) {
         match &mut self.player {
             Player::Cider(client) => {
-                client.play(&song).await;
+                if let Ok(()) = client.play(&song).await {
+                    PlayState::set_current_song(self);
+                }
             },
             Player::Spotify(client) => {
                 if let Err(e) = client.play(&song).await {
                     eprintln!("Spotify implementation failed: {}", e);
+                } else {
+                    PlayState::set_current_song(self);
                 }
             }
         }

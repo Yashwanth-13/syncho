@@ -151,7 +151,8 @@ impl CiderControl {
     pub async fn play(&self, song: &Song) -> Result<(), CiderError> {
         let song_id = self.get_id(song).await.unwrap();
         println!("{:?}", song_id);
-        self.cider.play_item("songs", &song_id).await
+        self.cider.play_item("songs", &song_id).await;
+        self.cider.seek_ms(song.position).await
     }
 
     pub async fn play_later(&self, song: &Song) ->  Result<(), CiderError> {

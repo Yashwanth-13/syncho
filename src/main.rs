@@ -37,9 +37,10 @@ async fn main() {
         let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
         println!("Listening on {}", listener.local_addr().unwrap());
 
-        let broadcaster = start_host(listener, Arc::clone(&code)).await;
+        let play_state = Arc::new(PlayState::new(&config));
+        let broadcaster = start_host(listener, Arc::clone(&play_state),  Arc::clone(&code)).await;
 
-        repl::looper(code.to_string(), PlayState::new(&config), broadcaster).await;
+        repl::looper(code.to_string(), play_state, broadcaster).await;
     } else if args.join {
         let code = get_input(&"Session Code".to_string(), false);
         let host_addr = format!("{}:8080", get_input(&"Host IP:Port (e.g. 192.168.1.5)".to_string(), false));

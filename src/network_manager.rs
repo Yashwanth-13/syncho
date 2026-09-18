@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Mutex};
 
@@ -14,6 +14,7 @@ pub enum NetworkMessage {
     Auth { code: String },
     AuthOk,
     AuthFail,
+    CurrentState(Option<Song>),
     Play(Song),
     PlayPause,
     Next(Song),
@@ -47,13 +48,14 @@ impl HostBroadcaster {
 /// Returns a [`HostBroadcaster`] you can call from the REPL to push events.
 pub async fn start_host(
     listener: TcpListener,
+    play_state: Arc<PlayState>,
     session_code: Arc<String>,
 ) -> HostBroadcaster {
     // Channel with room for 64 in-flight messages.
     let (tx, _rx) = broadcast::channel::<NetworkMessage>(64);
     let broadcaster = HostBroadcaster { tx: tx.clone() };
 
-    tokio::spawn(accept_loop(listener, session_code, tx));
+    tokio::spawn(accept_loop(listener, play_state, session_code, tx));
 
     broadcaster
 }
@@ -61,6 +63,7 @@ pub async fn start_host(
 /// Runs forever accepting incoming TCP connections.
 async fn accept_loop(
     listener: TcpListener,
+    play_state: Arc<PlayState>,
     session_code: Arc<String>,
     tx: broadcast::Sender<NetworkMessage>,
 ) {
@@ -70,7 +73,7 @@ async fn accept_loop(
                 println!("[syncho] Client connecting from {}", addr);
                 let code = Arc::clone(&session_code);
                 let rx = tx.subscribe();
-                tokio::spawn(handle_client(stream, code, rx));
+                tokio::spawn(handle_client(stream, Arc::clone(&play_state), code, rx));
             }
             Err(e) => {
                 eprintln!("[syncho] Accept error: {}", e);
@@ -82,11 +85,13 @@ async fn accept_loop(
 
 async fn handle_client(
     stream: TcpStream,
+    play_state: Arc<PlayState>,
     session_code: Arc<String>,
     mut rx: broadcast::Receiver<NetworkMessage>,
 ) {
-    let (read_half, mut write_half) = stream.into_split();
+    let (read_half, write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
+    let mut writer = BufWriter::new(write_half);
     let mut line = String::new();
 
     // ---- Authentication ----
@@ -101,23 +106,28 @@ async fn handle_client(
     };
 
     if !authed {
-        let _ = write_half
+        let _ = writer
             .write_all(NetworkMessage::AuthFail.to_wire().as_bytes())
             .await;
         println!("[syncho] Client failed authentication.");
         return;
     }
 
-    let _ = write_half
+    let _ = writer
         .write_all(NetworkMessage::AuthOk.to_wire().as_bytes())
         .await;
     println!("[syncho] Client authenticated successfully.");
+
+    let current_song = play_state.get_current_song().await;
+    let _ = writer
+        .write_all(NetworkMessage::CurrentState(current_song).to_wire().as_bytes())
+        .await;
 
     // ---- Forward broadcast messages ----
     loop {
         match rx.recv().await {
             Ok(msg) => {
-                if write_half
+                if writer
                     .write_all(msg.to_wire().as_bytes())
                     .await
                     .is_err()
@@ -201,6 +211,12 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
     let mut ps = play_state.lock().await;
 
     match msg {
+        NetworkMessage::CurrentState(current_song) => {
+            if let Some(song) = current_song {
+                ps.play(song);
+            }
+        }
+
         NetworkMessage::Play(song) => {
             println!("[syncho] Playing: {} — {}", song.song_name, song.artist_name);
             ps.play(song).await;

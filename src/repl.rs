@@ -221,8 +221,9 @@ impl ExecuteCommand for PlayNextHandler {
 }
 // --
 
-pub async fn looper(code: String, play_state: PlayState, broadcaster: HostBroadcaster) {
-    let play_state = Arc::new(Mutex::new(play_state));
+pub async fn looper(code: String, play_state: Arc<PlayState>, broadcaster: HostBroadcaster) {
+    let ps = Arc::into_inner(play_state).unwrap();
+    let play_state = Arc::new(Mutex::new(ps));
     let mut repl = Repl::builder()
         .add("code", Command::new(
             "Print the code",

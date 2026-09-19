@@ -4,14 +4,14 @@ mod helpers;
 mod player;
 mod repl;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use tokio::{net::TcpListener, sync::Mutex};
+use tokio::{net::TcpListener};
 
 use clap::Parser;
 use crate::{
     helpers::{generate_numeric_code, get_input},
-    network_manager::{join_session, start_host},
+    network_manager::{join_session, start_host, listen_to_playback},
     player::{player::PlayState, types::Config},
 };
 
@@ -40,6 +40,7 @@ async fn main() {
         let play_state = Arc::new(PlayState::new(&config));
         let broadcaster = start_host(listener, Arc::clone(&play_state),  Arc::clone(&code)).await;
 
+        tokio::spawn(listen_to_playback(broadcaster.clone())); // OS-independent to listen to playback changes
         repl::looper(code.to_string(), play_state, broadcaster).await;
     } else if args.join {
         let code = get_input(&"Session Code".to_string(), false);

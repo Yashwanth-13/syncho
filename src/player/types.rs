@@ -8,10 +8,7 @@ pub struct CiderControl {
 }
 
 pub struct PlayState {
-    pub is_playing: bool,
     pub player: Player,
-    pub current_song: Option<Song>,
-    pub queue_size: u64
 }
 
 

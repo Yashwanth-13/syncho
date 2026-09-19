@@ -1,12 +1,16 @@
-use std::sync::Arc;
+use clap::builder::NonEmptyStringValueParser;
+use futures::StreamExt;
+use nowhear::source::PlatformMediaSource;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::player::player::PlayState;
 use crate::player::types::Song;
-
+use nowhear::{MediaEvent, MediaSource, MediaSourceBuilder, PlaybackState};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -14,6 +18,8 @@ pub enum NetworkMessage {
     Auth { code: String },
     AuthOk,
     AuthFail,
+    Message(String),
+    Seek(u128),
     CurrentState(Option<Song>),
     Play(Song),
     PlayPause,
@@ -55,15 +61,63 @@ pub async fn start_host(
     let (tx, _rx) = broadcast::channel::<NetworkMessage>(64);
     let broadcaster = HostBroadcaster { tx: tx.clone() };
 
-    tokio::spawn(accept_loop(listener, play_state, session_code, tx));
-
+    tokio::spawn(accept_loop(listener, session_code, tx));
+    
     broadcaster
+}
+
+// Listens to playback events
+pub async fn listen_to_playback(broadcaster: HostBroadcaster) {
+    let source = MediaSourceBuilder::new().build().await.unwrap();
+    let mut stream = source.event_stream().await.unwrap();
+    
+    while let Some(event) = stream.next().await {
+        match event {
+            MediaEvent::TrackChanged { player_name, track} => {
+                let song = Song { song_name: track.title.clone(), artist_name: track.artist.concat(), album_name: track.album.unwrap(), position: 0 };
+                broadcaster.broadcast(NetworkMessage::Play(song.clone()));
+                println!("Song changed to: {}", track.title);
+            },
+
+            MediaEvent::StateChanged { player_name, state } => {
+                match state {
+                    PlaybackState::Stopped => {broadcaster.broadcast(NetworkMessage::Message("Host has no media loaded. Standing by..".to_string()))},
+                    _ => {
+                        broadcaster.broadcast(NetworkMessage::PlayPause);
+                        println!("Play/Pause");
+                    }
+                }
+            },
+
+            MediaEvent::PositionChanged { player_name, position } => {
+                println!("Position changed: {:?}", &position);
+                broadcaster.broadcast(NetworkMessage::Seek(position.as_millis().try_into().unwrap())); //Assuming the position is in seconds
+
+            },
+
+            _ => {}
+        }
+    }
+}
+
+// Gets current song without involving the players directly - Assumes only Cider or Spotify is playing. 
+pub async fn get_playback_status() -> Option<Song> {
+    let src = MediaSourceBuilder::new().build().await.unwrap();
+    let players = src.list_players().await.unwrap();
+
+    if let Some(player_name) = players.first() {
+        let player_info = src.get_player(player_name).await.unwrap();
+        if let Some(track) = player_info.current_track {
+            return Some(Song { song_name: track.title.clone(), artist_name: track.artist.concat(), album_name: track.album.unwrap(), position: 0 });
+        }
+    }
+
+    None
 }
 
 /// Runs forever accepting incoming TCP connections.
 async fn accept_loop(
     listener: TcpListener,
-    play_state: Arc<PlayState>,
     session_code: Arc<String>,
     tx: broadcast::Sender<NetworkMessage>,
 ) {
@@ -73,7 +127,9 @@ async fn accept_loop(
                 println!("[syncho] Client connecting from {}", addr);
                 let code = Arc::clone(&session_code);
                 let rx = tx.subscribe();
-                tokio::spawn(handle_client(stream, Arc::clone(&play_state), code, rx));
+                tokio::spawn(handle_client(stream, code, rx));
+                
+                tx.send(NetworkMessage::CurrentState(get_playback_status().await)).unwrap();
             }
             Err(e) => {
                 eprintln!("[syncho] Accept error: {}", e);
@@ -85,7 +141,6 @@ async fn accept_loop(
 
 async fn handle_client(
     stream: TcpStream,
-    play_state: Arc<PlayState>,
     session_code: Arc<String>,
     mut rx: broadcast::Receiver<NetworkMessage>,
 ) {
@@ -118,10 +173,6 @@ async fn handle_client(
         .await;
     println!("[syncho] Client authenticated successfully.");
 
-    let current_song = play_state.get_current_song().await;
-    let _ = writer
-        .write_all(NetworkMessage::CurrentState(current_song).to_wire().as_bytes())
-        .await;
 
     // ---- Forward broadcast messages ----
     loop {
@@ -208,12 +259,29 @@ pub async fn join_session(
 
 /// Apply a received host event to the local player.
 async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
-    let mut ps = play_state.lock().await;
+    let mut ps = play_state.lock().unwrap();
 
     match msg {
-        NetworkMessage::CurrentState(current_song) => {
-            if let Some(song) = current_song {
-                ps.play(song);
+        NetworkMessage::Message(message) => {
+            println!("[syncho] {}", message)
+        }
+
+        NetworkMessage::Seek(new_position) => {
+            ps.seek(new_position).await;
+        }
+
+        NetworkMessage::CurrentState(song) => {
+            match song {
+                Some(host_song) => {
+                    if let Some(curr_song) = get_playback_status().await {
+                        if &curr_song.song_name != &host_song.song_name {
+                            ps.play(host_song.clone()).await;
+                            ps.seek(host_song.position.try_into().unwrap()).await;
+                        }
+                    }
+                }
+
+                _ => {}
             }
         }
 

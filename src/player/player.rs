@@ -1,3 +1,7 @@
+use std::time::Duration;
+
+use cider_api::CiderError;
+
 use super::types::*;
 pub use crate::player::types::PlayState;
 use super::spotify::SpotifyPlayer;
@@ -21,24 +25,14 @@ impl PlayState {
         };
 
         PlayState {
-            is_playing: false,
             player,
-            current_song: None,
-            queue_size: 0
         }
     }
-    
-    async fn set_current_song(playstate: &mut PlayState) {
-        match &mut playstate.player {
+
+    pub async fn get_current_song(&mut self) -> Option<Song> {
+        match &mut self.player {
             Player::Cider(client) => {
-                let result = client.get_current_song().await;
-                if let Some(current_song)  = result {
-                    playstate.current_song = Some(current_song);
-                    playstate.is_playing = true;
-                } else {
-                    playstate.current_song = None;
-                    playstate.is_playing = false;
-                }
+                client.get_current_song().await
             },
 
             Player::Spotify(client) => {
@@ -49,39 +43,44 @@ impl PlayState {
                     let album_name = song_attr.get("album_name").unwrap().to_string();
                     let current_position_seconds = song_attr.get("position").unwrap().to_string();
                     let pos_secs = current_position_seconds.parse::<u64>().unwrap_or(0);
-                    playstate.is_playing = true;
-                    playstate.current_song = Some(Song {
+                    Some(Song {
                         song_name,
                         artist_name,
                         album_name,
                         position: pos_secs
-                    });
+                    })
                 } else {
-                    playstate.current_song = None;
-                    playstate.is_playing = false;
+                    None
                 }
             }
         }
     }
 
+    pub async fn seek(&mut self, new_position: u128) {
+        match &mut self.player {
+            Player::Cider(client) => {
+                client.seek(new_position.try_into().unwrap());
+            }
 
-    pub async fn get_current_song(&self) -> Option<Song> {
-        self.current_song.clone()
+            _ => {}
+
+            // TODO - Seek for spotify
+            // Player::Spotify()
+        }
     }
 
     
     pub async fn play(&mut self, song: Song) {
         match &mut self.player {
             Player::Cider(client) => {
-                if let Ok(()) = client.play(&song).await {
-                    PlayState::set_current_song(self);
+                if let Err(err) = client.play(&song).await {
+                    eprintln!("Cider Play failed: {}", err )
                 }
             },
+            
             Player::Spotify(client) => {
                 if let Err(e) = client.play(&song).await {
                     eprintln!("Spotify implementation failed: {}", e);
-                } else {
-                    PlayState::set_current_song(self);
                 }
             }
         }
@@ -95,7 +94,6 @@ impl PlayState {
                 client.play_later(&song).await;
             },
 
-            // TODO - Spotify
             Player::Spotify(client) => {
                 if let Err(e) = client.add_to_queue(&song).await {
                     eprintln!("Spotify implementation failed: {}", e);
@@ -148,7 +146,7 @@ impl PlayState {
         }
     }
     
-    //addes the song to queue(this is the song that plays immediatly after the present one)
+    //addes the song to queue(this is the song that plays immediately after the present one)
     pub async fn play_next(&mut self, song: Song) {
         match &mut self.player {
             Player::Cider(client) => {

@@ -75,7 +75,8 @@ impl PlaySongHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let song = get_song();
         self.broadcaster.broadcast(NetworkMessage::Play(song.clone()));
-        Arc::clone(&self.play_state).lock().unwrap().play(song).await;
+        // Arc::clone(&self.play_state).lock().unwrap().play(song).await;
+        self.play_state.lock().unwrap().play(song).await;
         Ok(CommandStatus::Done)
     }
 }

@@ -3,6 +3,7 @@ mod config_manager;
 mod helpers;
 mod player;
 mod repl;
+mod media_listener;
 
 use std::sync::Arc;
 
@@ -38,6 +39,16 @@ async fn main() {
         println!("Listening on {}", listener.local_addr().unwrap());
 
         let broadcaster = start_host(listener, Arc::clone(&code)).await;
+        
+        tokio::spawn(media_listener::listen(move |event| {
+            use media_listener::MediaEvent;
+            match event {
+                MediaEvent::TrackChanged { title, artist } => println!("track: {} — {}", title, artist),
+                MediaEvent::Playing => println!("play"),
+                MediaEvent::Paused => println!("pause"),
+                MediaEvent::Stopped => println!("stop"),
+            }
+        }));
 
         repl::looper(code.to_string(), PlayState::new(&config), broadcaster).await;
     } else if args.join {

@@ -19,3 +19,15 @@ mini_async_repl = "0.2.1"
 anyhow = "1.0.104"
 base64 = "0.23.1"
 unicode-normalization = "0.1.25"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winuser"] }
+windows = { version = "0.61", features = [
+    "Foundation",
+    "Media_Control"
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+zbus = "5.19.0"
+futures-lite = "2"

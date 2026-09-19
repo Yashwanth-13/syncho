@@ -19,7 +19,7 @@ pub enum NetworkMessage {
     AuthOk,
     AuthFail,
     Message(String),
-    Seek(u128),
+    Seek(String),
     CurrentState{song: Option<Song>},
     Play(Song),
     PlayPause,
@@ -91,7 +91,7 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster) {
 
             MediaEvent::PositionChanged { player_name, position } => {
                 println!("Position changed: {:?}", &position);
-                broadcaster.broadcast(NetworkMessage::Seek(position.as_millis().try_into().unwrap())); //Assuming the position is in seconds
+                broadcaster.broadcast(NetworkMessage::Seek(position.as_millis().to_string())); //Assuming the position is in seconds
 
             },
 
@@ -268,7 +268,8 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
         }
 
         NetworkMessage::Seek(new_position) => {
-            ps.seek(new_position).await;
+            let pos: u128 = new_position.parse().unwrap();
+            ps.seek(pos).await;
         }
 
         NetworkMessage::CurrentState{song} => {

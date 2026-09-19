@@ -20,7 +20,7 @@ pub enum NetworkMessage {
     AuthFail,
     Message(String),
     Seek(u128),
-    CurrentState(Option<Song>),
+    CurrentState{song: Option<Song>},
     Play(Song),
     PlayPause,
     Next(Song),
@@ -172,7 +172,7 @@ async fn handle_client(
     println!("[syncho] Client authenticated successfully.");
 
     let _ = writer
-        .write_all(NetworkMessage::CurrentState(get_playback_status().await).to_wire().as_bytes())
+        .write_all(NetworkMessage::CurrentState{song: get_playback_status().await}.to_wire().as_bytes())
         .await;
 
     // ---- Forward broadcast messages ----
@@ -271,7 +271,7 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
             ps.seek(new_position).await;
         }
 
-        NetworkMessage::CurrentState(song) => {
+        NetworkMessage::CurrentState{song} => {
             match song {
                 Some(host_song) => {
                     if let Some(curr_song) = get_playback_status().await {

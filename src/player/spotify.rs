@@ -94,6 +94,81 @@ impl SpotifyPlayer {
         status == StatusCode::UNAUTHORIZED
     }
 
+    pub async fn transfer_playback(&mut self, device_id: &str) -> Result<()> {
+        let resp = self
+            .client
+            .put("https://api.spotify.com/v1/me/player")
+            .bearer_auth(&self.access_token)
+            .json(&serde_json::json!({
+                "device_ids": [device_id],
+                "play": true
+            }))
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let body: Value = resp.json().await.unwrap_or(Value::Null);
+
+        if Self::is_expired_token_error(status, &body) {
+            self.refresh_access_token().await?;
+            return Box::pin(self.transfer_playback(device_id)).await;
+        }
+
+        // Give Spotify Connect a moment to wake the desktop client and switch session
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+        Ok(())
+    }
+
+    async fn get_active_device_id(&mut self) -> Result<Option<String>> {
+        let resp = self
+            .client
+            .get("https://api.spotify.com/v1/me/player/devices")
+            .bearer_auth(&self.access_token)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let body: Value = resp.json().await?;
+
+        if Self::is_expired_token_error(status, &body) {
+            self.refresh_access_token().await?;
+            return Box::pin(self.get_active_device_id()).await;
+        }
+
+        if !status.is_success() {
+            return Ok(None);
+        }
+
+        let devices = body.get("devices").and_then(|v| v.as_array());
+
+        if let Some(devices) = devices {
+            // If there's an already active device, use it directly
+            if let Some(active) = devices.iter().find(|d| {
+                d.get("is_active").and_then(|v| v.as_bool()).unwrap_or(false)
+            }) {
+                let id = active.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                return Ok(id);
+            }
+
+            // No device is currently active. Prefer "Computer" (desktop app), else first available
+            let candidate = devices
+                .iter()
+                .find(|d| d.get("type").and_then(|v| v.as_str()) == Some("Computer"))
+                .or_else(|| devices.first());
+
+            if let Some(d) = candidate {
+                if let Some(id) = d.get("id").and_then(|v| v.as_str()) {
+                    let id = id.to_string();
+                    let _ = self.transfer_playback(&id).await;
+                    return Ok(Some(id));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
     fn parse_song(body: &Value) -> Option<HashMap<String, String>> {
         let item = body.get("item")?;
 
@@ -242,6 +317,8 @@ impl SpotifyPlayer {
             "https://api.spotify.com/v1/me/player/play"
         };
 
+        let _device_id = self.get_active_device_id().await?;
+
         let resp = self
             .client
             .put(endpoint)
@@ -252,6 +329,13 @@ impl SpotifyPlayer {
             .await?;
 
         let status = resp.status();
+        let body: Value = resp.json().await.unwrap_or(Value::Null);
+
+        if Self::is_expired_token_error(status, &body) {
+            self.refresh_access_token().await?;
+            return Box::pin(self.play_pause()).await;
+        }
+
         if !status.is_success() && status != StatusCode::NO_CONTENT {
             return Err(anyhow!("failed to toggle playback ({})", status));
         }
@@ -259,7 +343,7 @@ impl SpotifyPlayer {
         Ok(())
     }
     
-    async fn search_track(&mut self, track: &str, album: &str,artist: &str) -> Result<String> {
+    async fn search_track(&mut self, track: &str, album: &str,artist: &str) -> Result<(String, String)> {
         let query = format!("track:{} album:{} artist:{}", track,album, artist);
 
         let resp = self
@@ -282,38 +366,45 @@ impl SpotifyPlayer {
             return Err(anyhow!("Spotify search failed ({}): {}", status, body));
         }
 
-        let track_id = body
+        let item = body
             .get("tracks")
             .and_then(|v| v.get("items"))
             .and_then(|v| v.get(0))
-            .and_then(|v| v.get("id"))
-            .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("track not found: {} by {}", track, artist))?;
 
-        Ok(track_id.to_string())
+        let track_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let album_uri = item.get("album").and_then(|v| v.get("uri")).and_then(|v| v.as_str()).unwrap_or("");
+
+        Ok((track_id.to_string(), album_uri.to_string()))
     }
 
     pub async fn play(&mut self, song: &Song) -> Result<()> {
-        let track_id = self.search_track(&song.song_name, &song.album_name, &song.artist_name).await?;
-        let uri = format!("spotify:track:{}", track_id);
+        let (track_id, album_uri) = self.search_track(&song.song_name, &song.album_name, &song.artist_name).await?;
+        let track_uri = format!("spotify:track:{}", track_id);
+
+        let _device_id = self.get_active_device_id().await?;
 
         let resp = self
             .client
             .put("https://api.spotify.com/v1/me/player/play")
             .bearer_auth(&self.access_token)
-            .json(&serde_json::json!({ "uris": [uri] }))
+            .json(&serde_json::json!({
+                "context_uri": album_uri,
+                "offset": { "uri": track_uri }
+            }))
             .send()
             .await?;
 
         let status = resp.status();
+        let body: Value = resp.json().await.unwrap_or(Value::Null);
 
-        if Self::is_expired_token_error(status, &resp.json().await.unwrap_or(Value::Null)) {
+        if Self::is_expired_token_error(status, &body) {
             self.refresh_access_token().await?;
             return Box::pin(self.play(song)).await;
         }
 
         if !status.is_success() && status != StatusCode::NO_CONTENT {
-            return Err(anyhow!("failed to start playback ({})", status));
+            return Err(anyhow!("failed to start playback ({}): {}", status, body));
         }
 
         Ok(())
@@ -321,8 +412,10 @@ impl SpotifyPlayer {
 
 
     pub async fn add_to_queue(&mut self, song: &Song) -> Result<()> {
-        let track_id = self.search_track(&song.song_name,&song.album_name, &song.artist_name).await?;
+        let (track_id, _album_uri) = self.search_track(&song.song_name,&song.album_name, &song.artist_name).await?;
         let uri = format!("spotify:track:{}", track_id);
+
+        let device_id = self.get_active_device_id().await?;
 
         let resp = self
             .client

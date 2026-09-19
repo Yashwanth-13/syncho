@@ -128,8 +128,6 @@ async fn accept_loop(
                 let code = Arc::clone(&session_code);
                 let rx = tx.subscribe();
                 tokio::spawn(handle_client(stream, code, rx));
-                
-                tx.send(NetworkMessage::CurrentState(get_playback_status().await)).unwrap();
             }
             Err(e) => {
                 eprintln!("[syncho] Accept error: {}", e);
@@ -144,9 +142,9 @@ async fn handle_client(
     session_code: Arc<String>,
     mut rx: broadcast::Receiver<NetworkMessage>,
 ) {
-    let (read_half, write_half) = stream.into_split();
+    let (read_half, mut writer) = stream.into_split();
     let mut reader = BufReader::new(read_half);
-    let mut writer = BufWriter::new(write_half);
+    // let mut writer = BufWriter::new(write_half);
     let mut line = String::new();
 
     // ---- Authentication ----
@@ -173,6 +171,9 @@ async fn handle_client(
         .await;
     println!("[syncho] Client authenticated successfully.");
 
+    let _ = writer
+        .write_all(NetworkMessage::CurrentState(get_playback_status().await).to_wire().as_bytes())
+        .await;
 
     // ---- Forward broadcast messages ----
     loop {

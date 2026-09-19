@@ -1,12 +1,9 @@
-use clap::builder::NonEmptyStringValueParser;
 use futures::StreamExt;
-use nowhear::source::PlatformMediaSource;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use crate::player::player::PlayState;
 use crate::player::types::Song;
@@ -74,9 +71,9 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster) {
     while let Some(event) = stream.next().await {
         match event {
             MediaEvent::TrackChanged { player_name, track} => {
-                let song = Song { song_name: track.title.clone(), artist_name: track.artist.concat(), album_name: track.album.unwrap(), position: 0 };
+                let song = Song { song_name: track.title.clone(), artist_name: track.artist.concat().clone(), album_name: track.album.as_ref().unwrap().clone(), position: 0 };
                 broadcaster.broadcast(NetworkMessage::Play(song.clone()));
-                println!("Song changed to: {}", track.title);
+                println!("Song changed to: {} {} {}", track.title, track.artist.concat().clone(), track.album.unwrap().clone());
             },
 
             MediaEvent::StateChanged { player_name, state } => {
@@ -108,7 +105,7 @@ pub async fn get_playback_status() -> Option<Song> {
     if let Some(player_name) = players.first() {
         let player_info = src.get_player(player_name).await.unwrap();
         if let Some(track) = player_info.current_track {
-            return Some(Song { song_name: track.title.clone(), artist_name: track.artist.concat(), album_name: track.album.unwrap(), position: 0 });
+            return Some(Song { song_name: track.title.clone(), artist_name: track.artist.concat(), album_name: track.album.unwrap(), position:  player_info.position.unwrap().as_millis().try_into().unwrap() });
         }
     }
 

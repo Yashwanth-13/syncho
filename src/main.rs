@@ -10,9 +10,7 @@ use tokio::{net::TcpListener};
 
 use clap::Parser;
 use crate::{
-    helpers::{generate_numeric_code, get_input},
-    network_manager::{join_session, start_host, listen_to_playback},
-    player::{player::PlayState, types::Config},
+    helpers::{generate_numeric_code, get_input}, network_manager::{get_playback_status, join_session, listen_to_playback, start_host}, player::{player::PlayState, types::Config},
 };
 
 #[derive(Parser, Debug)]

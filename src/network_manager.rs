@@ -18,8 +18,8 @@ pub enum NetworkMessage {
     Auth { code: String },
     AuthOk,
     AuthFail,
-    Message(String),
-    Seek(String),
+    Message{msg: String},
+    Seek{position: String},
     CurrentState{song: Option<Song>},
     Play(Song),
     PlayPause,
@@ -81,7 +81,7 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster) {
 
             MediaEvent::StateChanged { player_name, state } => {
                 match state {
-                    PlaybackState::Stopped => {broadcaster.broadcast(NetworkMessage::Message("Host has no media loaded. Standing by..".to_string()))},
+                    PlaybackState::Stopped => {broadcaster.broadcast(NetworkMessage::Message{msg: "Host has no media loaded. Standing by..".to_string()})},
                     _ => {
                         broadcaster.broadcast(NetworkMessage::PlayPause);
                         println!("Play/Pause");
@@ -91,7 +91,7 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster) {
 
             MediaEvent::PositionChanged { player_name, position } => {
                 println!("Position changed: {:?}", &position);
-                broadcaster.broadcast(NetworkMessage::Seek(position.as_millis().to_string())); //Assuming the position is in seconds
+                broadcaster.broadcast(NetworkMessage::Seek{position: position.as_millis().to_string()}); //Assuming the position is in seconds
 
             },
 
@@ -171,6 +171,8 @@ async fn handle_client(
         .await;
     println!("[syncho] Client authenticated successfully.");
 
+    let curr_state = get_playback_status().await;
+    println!("{:?}", curr_state.unwrap());
     let _ = writer
         .write_all(NetworkMessage::CurrentState{song: get_playback_status().await}.to_wire().as_bytes())
         .await;
@@ -263,12 +265,12 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
     let mut ps = play_state.lock().unwrap();
 
     match msg {
-        NetworkMessage::Message(message) => {
-            println!("[syncho] {}", message)
+        NetworkMessage::Message{msg} => {
+            println!("[syncho] {}", msg)
         }
 
-        NetworkMessage::Seek(new_position) => {
-            let pos: u128 = new_position.parse().unwrap();
+        NetworkMessage::Seek{position} => {
+            let pos: u128 = position.parse().unwrap();
             ps.seek(pos).await;
         }
 
@@ -278,6 +280,7 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
                     if let Some(curr_song) = get_playback_status().await {
                         if &curr_song.song_name != &host_song.song_name {
                             ps.play(host_song.clone()).await;
+                            println!("Received Song of current state: {:?}", host_song.clone());
                             ps.seek(host_song.position.try_into().unwrap()).await;
                         }
                     }

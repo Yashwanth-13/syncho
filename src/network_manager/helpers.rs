@@ -1,24 +1,27 @@
 
+use nowhear::{MediaSource, MediaSourceBuilder, MediaSourceError, Track};
+
 use crate::player::types::Song;
-use nowhear::{MediaEvent, MediaSource, MediaSourceBuilder, PlaybackState};
 
-
-// Gets current song without involving the players directly - Assumes only Cider or Spotify is playing. 
-pub async fn get_playback_status() -> Option<Song> {
+// Gets current track from the specified player
+pub async fn get_playback_status(player: String) -> Result<Option<Track>, MediaSourceError> {
     let src = MediaSourceBuilder::new().build().await.unwrap();
-    let players = src.list_players().await.unwrap();
 
-    
-    // if let Some(player_name) = players.first() {
-    //     let player_info = src.get_player(player_name).await.unwrap();
-    //     if let Some(track) = player_info.current_track {
-    //         return Some(Song { song_name: track.title.clone(), artist_name: track.artist.concat(), album_name: track.album.unwrap(), position:  player_info.position.unwrap().as_millis().try_into().unwrap() });
-    //     }
-    // }
+    let player_obj = src.get_player(&player).await?;
 
-    None
+    Ok(player_obj.current_track)
 }
 
 pub fn is_same_player(target_player: &String, current_player: &String) -> bool {
     target_player == current_player
+}
+
+pub fn make_song(track: Track) -> Song {
+    let album = track.album;
+    let album_name = match album {
+        Some(name) => {name}
+        None => {"".to_string()}
+    };
+
+    Song { song_name: track.title.clone(), artist_name: track.artist.concat().clone(), album_name: album_name, position: 0 }
 }

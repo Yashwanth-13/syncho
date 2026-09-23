@@ -2,7 +2,7 @@ use super::types::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpStream};
 use std::sync::{Arc, Mutex};
-use crate::network_manager::helpers::get_playback_status;
+use crate::network_manager::helpers::{get_playback_status, make_song};
 use crate::player::player::PlayState;
 
 pub async fn join_session(
@@ -81,9 +81,10 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
         NetworkMessage::CurrentState{song} => {
             match song {
                 Some(host_song) => {
-                    println!("Received song of current state: {:?}", host_song.clone());
-                    if let Some(curr_song) = get_playback_status().await {
-                        if &curr_song.song_name != &host_song.song_name {
+                    if let Ok(curr_track) = get_playback_status(ps.get_player_str()).await {
+
+                        let song = make_song(curr_track.unwrap());
+                        if &song.song_name != &host_song.song_name {
                             ps.play(host_song.clone()).await;
                         } else {
                             ps.seek(host_song.position.try_into().unwrap()).await;
@@ -92,9 +93,13 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
                         ps.play(host_song.clone()).await;
                         ps.seek(host_song.position.try_into().unwrap()).await;
                     }
+
+                    println!("[syncho] playing Host's current song: {} - {}", host_song.song_name, host_song.artist_name);
                 }
 
-                _ => {}
+                _ => {
+                    println!("[syncho] Host is playing nothing right now");
+                }
             }
         }
 

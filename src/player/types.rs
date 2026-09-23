@@ -7,6 +7,11 @@ pub struct CiderControl {
     pub cider: CiderClient
 }
 
+pub enum Player {
+    Cider(CiderControl),
+    Spotify(SpotifyPlayer),
+}
+
 pub struct PlayState {
     pub player: Player,
 }
@@ -24,11 +29,6 @@ pub enum Config {
         access_token: String
 
     },
-}
-
-pub enum Player {
-    Cider(CiderControl),
-    Spotify(SpotifyPlayer),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

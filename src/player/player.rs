@@ -1,7 +1,3 @@
-use std::time::Duration;
-
-use cider_api::CiderError;
-
 use super::types::*;
 pub use crate::player::types::PlayState;
 use super::spotify::SpotifyPlayer;
@@ -26,6 +22,13 @@ impl PlayState {
 
         PlayState {
             player,
+        }
+    }
+
+    pub fn get_player_str(&self) -> String {
+        match self.player {
+            Player::Cider(_) => "cider".to_string(),
+            Player::Spotify(_) => "spotify".to_string()
         }
     }
 

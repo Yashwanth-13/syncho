@@ -10,8 +10,10 @@ use tokio::{net::TcpListener};
 
 use clap::Parser;
 use crate::{
-    helpers::{generate_numeric_code, get_input}, network_manager::{get_playback_status, join_session, listen_to_playback, start_host}, player::{player::PlayState, types::Config},
+    helpers::{generate_numeric_code, get_input}, network_manager::{client::join_session, host::{listen_to_playback, start_host}}, player::{types::PlayState, types::Config},
 };
+
+
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -36,10 +38,12 @@ async fn main() {
         println!("Listening on {}", listener.local_addr().unwrap());
 
         let play_state = Arc::new(PlayState::new(&config));
-        let broadcaster = start_host(listener, Arc::clone(&play_state),  Arc::clone(&code)).await;
+        let broadcaster = start_host(listener,Arc::clone(&code)).await;
 
-        tokio::spawn(listen_to_playback(broadcaster.clone())); // OS-independent to listen to playback changes
+        tokio::spawn(listen_to_playback(broadcaster.clone(), play_state.get_player_str())); // OS-independent to listen to playback changes
+        // tokio::spawn(get_playback_status());
         repl::looper(code.to_string(), play_state, broadcaster).await;
+
     } else if args.join {
         let code = get_input(&"Session Code".to_string(), false);
         let host_addr = format!("{}:8080", get_input(&"Host IP:Port (e.g. 192.168.1.5)".to_string(), false));

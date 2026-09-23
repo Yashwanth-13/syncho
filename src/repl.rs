@@ -8,7 +8,7 @@ use mini_async_repl::{
 };
 
 use crate::helpers::get_input;
-use crate::network_manager::{HostBroadcaster, NetworkMessage};
+use crate::network_manager::types::{HostBroadcaster, NetworkMessage};
 use crate::player::player::PlayState;
 use crate::player::types::Song;
 

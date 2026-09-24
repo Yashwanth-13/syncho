@@ -3,6 +3,7 @@ mod config_manager;
 mod helpers;
 mod player;
 mod repl;
+mod media_listener;
 
 use crate::{
     helpers::{generate_numeric_code, get_input}, network_manager::{client::join_session, host::{listen_to_playback, start_host}}, player::types::{Config, PlayState},

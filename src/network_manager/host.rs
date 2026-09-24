@@ -126,9 +126,11 @@ async fn handle_client(
         .await;
     println!("[syncho] Client authenticated successfully.");
 
-    // let curr_state = get_playback_status(ps.get_player_str()).await;
-    // println!("Current-state: {:?}", &curr_state.clone().unwrap());
     let curr_song = ps.get_current_song().await;
+    // Release the lock before entering the long-lived broadcast loop,
+    // so other clients can connect and authenticate concurrently.
+    drop(ps);
+
     let message = match curr_song {
         Some(song) => NetworkMessage::CurrentState{song: Some(song)},
         None => NetworkMessage::CurrentState{song: None}

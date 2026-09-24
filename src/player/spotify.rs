@@ -412,6 +412,32 @@ impl SpotifyPlayer {
     }
 
 
+    pub async fn seek(&mut self, position_ms: u64) -> Result<()> {
+        let resp = self
+            .client
+            .put("https://api.spotify.com/v1/me/player/seek")
+            .bearer_auth(&self.access_token)
+            .query(&[("position_ms", position_ms.to_string())])
+            .header(reqwest::header::CONTENT_LENGTH, "0")
+            .body(Vec::new())
+            .send()
+            .await?;
+
+        let status = resp.status();
+        let body: Value = resp.json().await.unwrap_or(Value::Null);
+
+        if Self::is_expired_token_error(status, &body) {
+            self.refresh_access_token().await?;
+            return Box::pin(self.seek(position_ms)).await;
+        }
+
+        if !status.is_success() && status != StatusCode::NO_CONTENT {
+            return Err(anyhow!("failed to seek ({}): {}", status, body));
+        }
+
+        Ok(())
+    }
+
     pub async fn add_to_queue(&mut self, song: &Song) -> Result<()> {
         let (track_id, _album_uri) = self.search_track(&song.song_name,&song.album_name, &song.artist_name).await?;
         let uri = format!("spotify:track:{}", track_id);

@@ -62,13 +62,14 @@ impl PlayState {
     pub async fn seek(&mut self, new_position: u64) {
         match &mut self.player {
             Player::Cider(client) => {
-                client.seek(new_position.try_into().unwrap());
+                client.seek(new_position.try_into().unwrap()).await;
             }
 
-            _ => {}
-
-            // TODO - Seek for spotify
-            // Player::Spotify()
+            Player::Spotify(client) => {
+                if let Err(e) = client.seek(new_position).await {
+                    eprintln!("Spotify seek failed: {}", e);
+                }
+            }
         }
     }
 

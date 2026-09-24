@@ -1,11 +1,6 @@
-
-use std::thread::current;
-
 use nowhear::{MediaSource, MediaSourceBuilder, MediaSourceError, Track};
-
 use crate::player::types::Song;
 
-// Gets current track from the specified player
 pub async fn get_playback_status(player: String) -> Result<Option<Track>, MediaSourceError> {
     let src = MediaSourceBuilder::new().build().await.unwrap();
 
@@ -15,8 +10,7 @@ pub async fn get_playback_status(player: String) -> Result<Option<Track>, MediaS
 }
 
 pub fn is_same_player(target_player: &String, current_player: &String) -> bool {
-    let current_lower = current_player.to_lowercase();
-    current_lower.contains(target_player)
+    current_player.to_lowercase().contains(target_player)
 }
 
 pub fn make_song(track: Track) -> Song {

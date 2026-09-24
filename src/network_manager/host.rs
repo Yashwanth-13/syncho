@@ -99,13 +99,11 @@ async fn handle_client(
 ) {
     let (read_half, mut writer) = stream.into_split();
     let mut reader = BufReader::new(read_half);
-    // let mut writer = BufWriter::new(write_half);
     let mut line = String::new();
-    let mut ps = play_state.lock().await;
-    // ---- Authentication ----
+    
     line.clear();
     if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
-        return; // client disconnected before sending anything
+        return;
     }
 
     let authed = match serde_json::from_str::<NetworkMessage>(line.trim()) {
@@ -126,10 +124,9 @@ async fn handle_client(
         .await;
     println!("[syncho] Client authenticated successfully.");
 
-    let curr_song = ps.get_current_song().await;
-    // Release the lock before entering the long-lived broadcast loop,
-    // so other clients can connect and authenticate concurrently.
-    drop(ps);
+    let curr_song = {
+        play_state.lock().await.get_current_song().await
+    };
 
     let message = match curr_song {
         Some(song) => NetworkMessage::CurrentState{song: Some(song)},
@@ -140,7 +137,7 @@ async fn handle_client(
     .write_all(message.to_wire().as_bytes())
     .await;
 
-    // ---- Forward broadcast messages ----
+    // Forward broadcast messages
     loop {
         match rx.recv().await {
             Ok(msg) => {

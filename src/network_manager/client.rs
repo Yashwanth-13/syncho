@@ -16,7 +16,7 @@ pub async fn join_session(
     let (read_half, mut write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
 
-    // ---- Send auth ----
+    // Send auth
     let auth_msg = NetworkMessage::Auth {
         code: session_code.to_string(),
     };
@@ -24,7 +24,7 @@ pub async fn join_session(
         .write_all(auth_msg.to_wire().as_bytes())
         .await?;
 
-    // ---- Read auth response ----
+    // Read auth response
     let mut line = String::new();
     reader.read_line(&mut line).await?;
     match serde_json::from_str::<NetworkMessage>(line.trim())? {
@@ -41,7 +41,7 @@ pub async fn join_session(
         }
     }
 
-    // ---- Event loop ----
+    // Listening to host
     loop {
         line.clear();
         let n = reader.read_line(&mut line).await?;
@@ -53,7 +53,7 @@ pub async fn join_session(
         let msg: NetworkMessage = match serde_json::from_str(line.trim()) {
             Ok(m) => m,
             Err(e) => {
-                eprintln!("[syncho] Bad message from host: {} — {:?}", e, line.trim());
+                eprintln!("[syncho] Bad message from host: {} — {:?}", e, line);
                 continue;
             }
         };

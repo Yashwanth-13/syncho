@@ -40,13 +40,12 @@ async fn main() {
         let broadcaster = start_host(listener, play_state.clone(), Arc::clone(&code)).await;
 
         tokio::spawn(listen_to_playback(broadcaster.clone(), curr_player.clone())); // OS-independent to listen to playback changes
-        // println!("{:?}", get_playback_status(curr_player.clone()).await);
         repl::looper(code.to_string(), play_state, broadcaster).await;
 
     } else if args.join {
-        let code = get_input(&"Session Code".to_string(), false);
         let host_addr = format!("{}:8080", get_input(&"Host IP".to_string(), false));
-
+        let code = get_input(&"Session Code".to_string(), false);
+        
         if let Err(e) = join_session(&host_addr, &code, play_state).await {
             eprintln!("[syncho] Failed to join session: {}", e);
         }

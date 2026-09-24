@@ -21,7 +21,7 @@ fn get_song() -> Song {
     Song { song_name, artist_name, album_name, position: 0 }
 }
 
-// --- "code" command: just prints the session code ---
+// "code" command: just prints the session code
 struct CodeHandler {
     code: String,
 }
@@ -66,7 +66,7 @@ impl ExecuteCommand for PlayPauseHandler {
     }
 }
 
-// --- "ps" command: play a specific song ---
+// "ps" command: play a specific song
 struct PlaySongHandler {
     play_state: Arc<Mutex<PlayState>>,
     broadcaster: HostBroadcaster,
@@ -92,7 +92,7 @@ impl ExecuteCommand for PlaySongHandler {
 }
 // --
 
-// --- "pl" command: play a specific song later
+// "pl" command: play a specific song later
 struct PlayLaterHandler {
     play_state: Arc<Mutex<PlayState>>,
     broadcaster: HostBroadcaster,

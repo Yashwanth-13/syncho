@@ -21,10 +21,14 @@ impl PlayState {
         };
 
         PlayState {
-            is_playing: false,
             player,
-            current_song: None,
-            queue_size: 0
+        }
+    }
+
+    pub fn get_player_str(&self) -> String {
+        match self.player {
+            Player::Cider(_) => "cider".to_string(),
+            Player::Spotify(_) => "spotify".to_string()
         }
     }
 
@@ -40,18 +44,30 @@ impl PlayState {
                     let song_name = song_attr.get("song_name").unwrap().to_string();
                     let artist_name = song_attr.get("artist_name").unwrap().to_string();
                     let album_name = song_attr.get("album_name").unwrap().to_string();
-                    let current_position_seconds = song_attr.get("position").unwrap().to_string();
-                    let pos_secs = current_position_seconds.parse::<u64>().unwrap_or(0);
-                    self.is_playing = true;
+                    let current_position_millis = song_attr.get("position").unwrap().to_string();
+                    let pos_millis = current_position_millis.parse::<u64>().unwrap_or(0);
                     Some(Song {
                         song_name,
                         artist_name,
                         album_name,
-                        position: pos_secs
+                        position: pos_millis
                     })
                 } else {
-                    self.is_playing = false;
                     None
+                }
+            }
+        }
+    }
+
+    pub async fn seek(&mut self, new_position: u64) {
+        match &mut self.player {
+            Player::Cider(client) => {
+                client.seek(new_position.try_into().unwrap()).await;
+            }
+
+            Player::Spotify(client) => {
+                if let Err(e) = client.seek(new_position).await {
+                    eprintln!("Spotify seek failed: {}", e);
                 }
             }
         }
@@ -61,8 +77,11 @@ impl PlayState {
     pub async fn play(&mut self, song: Song) {
         match &mut self.player {
             Player::Cider(client) => {
-                client.play(&song).await;
+                if let Err(err) = client.play(&song).await {
+                    eprintln!("Cider Play failed: {}", err )
+                }
             },
+            
             Player::Spotify(client) => {
                 if let Err(e) = client.play(&song).await {
                     eprintln!("Spotify implementation failed: {}", e);
@@ -79,7 +98,6 @@ impl PlayState {
                 client.play_later(&song).await;
             },
 
-            // TODO - Spotify
             Player::Spotify(client) => {
                 if let Err(e) = client.add_to_queue(&song).await {
                     eprintln!("Spotify implementation failed: {}", e);
@@ -132,7 +150,7 @@ impl PlayState {
         }
     }
     
-    //addes the song to queue(this is the song that plays immediatly after the present one)
+    //addes the song to queue(this is the song that plays immediately after the present one)
     pub async fn play_next(&mut self, song: Song) {
         match &mut self.player {
             Player::Cider(client) => {

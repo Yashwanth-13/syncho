@@ -4,36 +4,10 @@ use std::{env, fs, io::{self, BufWriter}};
 use std::{self, path::Path, fs::File, net::Ipv4Addr};
 
 
-use crate::helpers::get_input;
+use crate::helpers::*;
 use crate::player::types::Config;
 
 impl Config {
-    fn is_reachable(peer_ip: &String) -> bool {
-        let ip = peer_ip.parse::<Ipv4Addr>();
-
-        match ip {
-            Ok(val) => {
-                match ping::new(std::net::IpAddr::V4(val))
-                .send() {
-                    Ok(_) => true,
-                    Err(_) => false
-                }
-            },
-            Err(e) => false
-        }
-    }
-
-    fn get_ip() -> String {
-        loop {
-            let peer_ip = get_input(&"Friend's IP address".to_string(), false);
-
-            if Config::is_reachable(&peer_ip) {
-                return peer_ip
-            } else {
-                println!("Enter a valid IP address\n")
-            }
-        }
-    }
 
     fn create_config(path: &Path) -> Config {
         println!("\nNo previous config found. Creating new config\n");

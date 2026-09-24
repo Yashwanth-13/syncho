@@ -34,6 +34,7 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster, target_player: Str
     while let Some(event) = stream.next().await {
         match event {
             MediaEvent::TrackChanged { player_name, track} => {
+                println!("Track changed - Player: {:?}", &player_name);
                 if is_same_player(&target_player, &player_name) {
                     let song = make_song(track);
                     println!("Song changed to: {} {} {}", song.song_name, song.artist_name, &song.album_name);
@@ -43,6 +44,7 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster, target_player: Str
             },
 
             MediaEvent::StateChanged { player_name, state } => {
+                println!("State changed - Player: {:?}", &player_name);
                 if is_same_player(&target_player, &player_name) {
                     match state {
                         PlaybackState::Stopped => {broadcaster.broadcast(NetworkMessage::Message{msg: "Host has no media loaded. Standing by..".to_string()})},
@@ -55,6 +57,7 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster, target_player: Str
             },
 
             MediaEvent::PositionChanged { player_name, position } => {
+                println!("Position changed - Player: {:?}", &player_name);
                 if is_same_player(&target_player, &player_name) {
                     println!("Position changed: {:?}", &position);
                     broadcaster.broadcast(NetworkMessage::Seek{position: position.as_millis().to_string()});

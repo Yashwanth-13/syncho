@@ -81,7 +81,7 @@ async fn accept_loop(
             Ok((stream, addr)) => {
                 println!("[syncho] Client connecting from {}", addr);
                 let rx = tx.subscribe();
-                tokio::spawn(handle_client(stream, play_state.clone(), Arc::clone(&session_code), rx));
+                tokio::spawn(handle_client(stream, Arc::clone(&play_state), Arc::clone(&session_code), rx));
             }
             Err(e) => {
                 eprintln!("[syncho] Accept error: {}", e);

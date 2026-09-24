@@ -1,8 +1,8 @@
 use super::types::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpStream};
-use std::sync::{Arc, Mutex};
-use crate::network_manager::helpers::{get_playback_status, make_song};
+use std::sync::{Arc};
+use futures::lock::Mutex;
 use crate::player::player::PlayState;
 
 pub async fn join_session(
@@ -66,7 +66,7 @@ pub async fn join_session(
 
 /// Apply a received host event to the local player.
 async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
-    let mut ps = play_state.lock().unwrap();
+    let mut ps = play_state.lock().await;
 
     match msg {
         NetworkMessage::Message{msg} => {
@@ -74,29 +74,17 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
         }
 
         NetworkMessage::Seek{position} => {
-            let pos: u128 = position.parse().unwrap();
+            let pos: u64 = position.parse().unwrap();
             ps.seek(pos).await;
         }
 
         NetworkMessage::CurrentState{song} => {
             match song {
                 Some(host_song) => {
-                    if let Ok(curr_track) = get_playback_status(ps.get_player_str()).await {
-
-                        let song = make_song(curr_track.unwrap());
-                        if &song.song_name != &host_song.song_name {
-                            ps.play(host_song.clone()).await;
-                        } else {
-                            ps.seek(host_song.position.try_into().unwrap()).await;
-                        }
-                    } else {
-                        ps.play(host_song.clone()).await;
-                        ps.seek(host_song.position.try_into().unwrap()).await;
-                    }
-
+                    ps.play(host_song.clone()).await;
+                    ps.seek(host_song.position.try_into().unwrap()).await;
                     println!("[syncho] playing Host's current song: {} - {}", host_song.song_name, host_song.artist_name);
                 }
-
                 _ => {
                     println!("[syncho] Host is playing nothing right now");
                 }

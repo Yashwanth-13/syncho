@@ -5,10 +5,11 @@ mod player;
 mod repl;
 
 use crate::{
-    helpers::{generate_numeric_code, get_input}, network_manager::{client::join_session, host::{listen_to_playback, start_host}}, player::{types::PlayState, types::Config},
+    helpers::{generate_numeric_code, get_input}, network_manager::{client::join_session, host::{listen_to_playback, start_host}}, player::types::{Config, PlayState},
 };
 
-use std::sync::{Arc, Mutex};
+use futures::lock::Mutex;
+use std::sync::{Arc};
 use tokio::{net::TcpListener};
 use clap::Parser;
 
@@ -25,6 +26,7 @@ struct Args {
 #[tokio::main]
 async fn main() {
     let config = Config::get_config();
+    let play_state: Arc<Mutex<PlayState>> = Arc::new(Mutex::new(PlayState::new(&config)));
 
     let args = Args::parse();
     if args.host {
@@ -34,18 +36,16 @@ async fn main() {
         let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
         println!("Listening on {}", listener.local_addr().unwrap());
 
-        let play_state = Arc::new(PlayState::new(&config));
-        let broadcaster = start_host(listener, Arc::clone(&play_state), Arc::clone(&code)).await;
+        let curr_player = play_state.lock().await.get_player_str();
+        let broadcaster = start_host(listener, play_state.clone(), Arc::clone(&code)).await;
 
-        tokio::spawn(listen_to_playback(broadcaster.clone(), play_state.get_player_str())); // OS-independent to listen to playback changes
-        // tokio::spawn(get_playback_status());
-        repl::looper(code.to_string(), Arc::new(PlayState::new(&config)), broadcaster).await;
+        tokio::spawn(listen_to_playback(broadcaster.clone(), curr_player.clone())); // OS-independent to listen to playback changes
+        // println!("{:?}", get_playback_status(curr_player.clone()).await);
+        repl::looper(code.to_string(), play_state, broadcaster).await;
 
     } else if args.join {
         let code = get_input(&"Session Code".to_string(), false);
-        let host_addr = format!("{}:8080", get_input(&"Host IP:Port (e.g. 192.168.1.5)".to_string(), false));
-
-        let play_state = Arc::new(Mutex::new(PlayState::new(&config)));
+        let host_addr = format!("{}:8080", get_input(&"Host IP".to_string(), false));
 
         if let Err(e) = join_session(&host_addr, &code, play_state).await {
             eprintln!("[syncho] Failed to join session: {}", e);

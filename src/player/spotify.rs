@@ -180,7 +180,8 @@ impl SpotifyPlayer {
             .as_str()?
             .to_string();
         let album_name = item.get("album")?.get("name")?.as_str()?.to_string();
-        let position = (body.get("progress_ms")?.as_i64()? / 1000).to_string();
+        // let position = (body.get("progress_ms")?.as_i64()? / 1000).to_string(); Need millis
+        let position = (body.get("progress_ms")?.as_i64()?).to_string();
 
         let mut map = HashMap::new();
         map.insert("song_name".to_string(), song_name);

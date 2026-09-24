@@ -1,26 +1,27 @@
 use super::types::*;
 use futures::StreamExt;
+use futures::lock::Mutex;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast};
 use std::sync::{Arc};
 
-use crate::network_manager::helpers::{get_playback_status, is_same_player, make_song};
-use crate::player::types::{PlayState, Song};
+use crate::network_manager::helpers::{is_same_player, make_song};
+use crate::player::types::{PlayState};
 use nowhear::{MediaEvent, MediaSource, MediaSourceBuilder, PlaybackState};
 
 
 /// Returns a [`HostBroadcaster`] you can call from the REPL to push events.
 pub async fn start_host(
     listener: TcpListener,
-    play_state: Arc<PlayState>,
+    play_state: Arc<Mutex<PlayState>>,
     session_code: Arc<String>,
 ) -> HostBroadcaster {
     // Channel with room for 64 in-flight messages.
     let (tx, _rx) = broadcast::channel::<NetworkMessage>(64);
     let broadcaster = HostBroadcaster { tx: tx.clone() };
 
-    tokio::spawn(accept_loop(listener, Arc::clone(&play_state), session_code, tx));
+    tokio::spawn(accept_loop(listener, play_state, session_code, tx));
     
     broadcaster
 }
@@ -68,7 +69,7 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster, target_player: Str
 /// Runs forever accepting incoming TCP connections.
 async fn accept_loop(
     listener: TcpListener,
-    play_state: Arc<PlayState>,
+    play_state: Arc<Mutex<PlayState>>,
     session_code: Arc<String>,
     tx: broadcast::Sender<NetworkMessage>,
 ) {
@@ -77,7 +78,7 @@ async fn accept_loop(
             Ok((stream, addr)) => {
                 println!("[syncho] Client connecting from {}", addr);
                 let rx = tx.subscribe();
-                tokio::spawn(handle_client(stream, Arc::clone(&play_state), Arc::clone(&session_code), rx));
+                tokio::spawn(handle_client(stream, play_state.clone(), Arc::clone(&session_code), rx));
             }
             Err(e) => {
                 eprintln!("[syncho] Accept error: {}", e);
@@ -89,7 +90,7 @@ async fn accept_loop(
 
 async fn handle_client(
     stream: TcpStream,
-    play_state: Arc<PlayState>,
+    play_state: Arc<Mutex<PlayState>>,
     session_code: Arc<String>,
     mut rx: broadcast::Receiver<NetworkMessage>,
 ) {
@@ -97,7 +98,7 @@ async fn handle_client(
     let mut reader = BufReader::new(read_half);
     // let mut writer = BufWriter::new(write_half);
     let mut line = String::new();
-
+    let mut ps = play_state.lock().await;
     // ---- Authentication ----
     line.clear();
     if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
@@ -122,22 +123,17 @@ async fn handle_client(
         .await;
     println!("[syncho] Client authenticated successfully.");
 
-    let curr_state = get_playback_status(play_state.get_player_str()).await;
-    println!("Current-state: {:?}", &curr_state.clone().unwrap());
-    match curr_state {
-        Ok(potential_track) => {
-            let message = match potential_track {
-                Some(track) => NetworkMessage::CurrentState{song: Some(make_song(track))},
-                None => NetworkMessage::CurrentState{song: None}
-            };
+    // let curr_state = get_playback_status(ps.get_player_str()).await;
+    // println!("Current-state: {:?}", &curr_state.clone().unwrap());
+    let curr_song = ps.get_current_song().await;
+    let message = match curr_song {
+        Some(song) => NetworkMessage::CurrentState{song: Some(song)},
+        None => NetworkMessage::CurrentState{song: None}
+    };
 
-            let _ = writer
-                .write_all(message.to_wire().as_bytes())
-                .await;
-        },
-
-        _ => {println!("Player from your config doesn't seem to be open. Check your player status")}
-    }
+    let _ = writer
+    .write_all(message.to_wire().as_bytes())
+    .await;
 
     // ---- Forward broadcast messages ----
     loop {

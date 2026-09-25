@@ -58,7 +58,6 @@ impl CiderControl {
         .filter(|c| !CiderControl::is_combining_mark(*c))
         .collect();
 
-        // 2. Lowercase
         let lower = deaccented.to_lowercase()
             .chars()
             .filter(|c| c.is_alphanumeric() || c.is_whitespace())
@@ -89,8 +88,6 @@ impl CiderControl {
         let min_album_changes = normalized_levenshtein(&CiderControl::normalize(&candidate.album_name), &CiderControl::normalize(target_album));
 
         let score = min_song_changes * 0.4 + min_artist_changes * 0.45 + min_album_changes * 0.15;
-        println!("Score: {}; Song: {}; Artist: {}; Album: {}", score, &candidate.name, &candidate.artist_name, &candidate.album_name);
-        println!("Score: {}; Song: {}; Artist: {}; Album: {}\n", score, min_song_changes, min_artist_changes, min_album_changes);
         score
 
     }
@@ -114,9 +111,7 @@ impl CiderControl {
 
     async fn get_id(&self, song: &Song) -> Option<String>{
         let path = format!("/v1/catalog/in/search?types=songs&term={}", song.song_name);
-        
-        
-        // let bm = CiderControl::find_best_match(&self.cider.amapi_run_v3(&path).await.unwrap().to_string(), song);
+
         let mut back_off: f64 = 1.0;
         let mut count = 0;
         loop {
@@ -154,14 +149,12 @@ impl CiderControl {
 
     pub async fn play(&self, song: &Song) -> Result<(), CiderError> {
         let song_id = self.get_id(song).await.unwrap();
-        println!("{:?}", song_id);
         let _ = self.cider.play_item("songs", &song_id).await;
         self.cider.seek_ms(song.position).await
     }
 
     pub async fn play_later(&self, song: &Song) ->  Result<(), CiderError> {
         let song_id = self.get_id(song).await.unwrap();
-        println!("{:?}", song_id);
         self.cider.play_later("songs", &song_id).await
     }
 
@@ -179,7 +172,6 @@ impl CiderControl {
 
     pub async fn play_next(&self, song: &Song) -> Result<(), CiderError> {
         let song_id = self.get_id(song).await.unwrap();
-        println!("{:?}", song_id);
         self.cider.play_next("songs", &song_id).await
     }
 

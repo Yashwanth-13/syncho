@@ -1,7 +1,6 @@
 use dialoguer::{Select};
-use ping;
-use std::{env, fs, io::{self, BufWriter}};
-use std::{self, path::Path, fs::File, net::Ipv4Addr};
+use std::{env, fs, io::{BufWriter}};
+use std::{self, path::Path, fs::File};
 
 
 use crate::helpers::*;

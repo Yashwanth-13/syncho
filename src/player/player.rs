@@ -95,7 +95,7 @@ impl PlayState {
     pub async fn play_later(&mut self, song: Song) {
         match &mut self.player {
             Player::Cider(client) => {
-                client.play_later(&song).await;
+                let _ = client.play_later(&song).await;
             },
 
             Player::Spotify(client) => {
@@ -109,7 +109,7 @@ impl PlayState {
     pub async fn play_pause(&mut self) {
         match &mut self.player {
             Player::Cider(client) => {
-                client.play_pause().await;
+                let _ = client.play_pause().await;
             },
 
             Player::Spotify(client) => {
@@ -124,7 +124,7 @@ impl PlayState {
     pub async fn previous(&mut self) {
         match &mut self.player {
             Player::Cider(client) => {
-                client.previous().await;
+                let _ = client.previous().await;
             },
 
             Player::Spotify(client) => {
@@ -139,7 +139,7 @@ impl PlayState {
     pub async fn next(&mut self) {
         match &mut self.player {
             Player::Cider(client) => {
-                client.next().await;
+                let _ = client.next().await;
             },
 
             Player::Spotify(client) => {
@@ -154,7 +154,7 @@ impl PlayState {
     pub async fn play_next(&mut self, song: Song) {
         match &mut self.player {
             Player::Cider(client) => {
-                client.play_next(&song).await;
+                let _ = client.play_next(&song).await;
             },
 
             Player::Spotify(client) => {

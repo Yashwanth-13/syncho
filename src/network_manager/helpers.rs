@@ -1,13 +1,5 @@
-use nowhear::{MediaSource, MediaSourceBuilder, MediaSourceError, Track};
+use nowhear::{Track};
 use crate::player::types::Song;
-
-pub async fn get_playback_status(player: String) -> Result<Option<Track>, MediaSourceError> {
-    let src = MediaSourceBuilder::new().build().await.unwrap();
-
-    let player_obj = src.get_player(&player).await?;
-
-    Ok(player_obj.current_track)
-}
 
 pub fn is_same_player(target_player: &String, current_player: &String) -> bool {
     current_player.to_lowercase().contains(target_player)

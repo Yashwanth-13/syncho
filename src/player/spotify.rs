@@ -442,7 +442,7 @@ impl SpotifyPlayer {
         let (track_id, _album_uri) = self.search_track(&song.song_name,&song.album_name, &song.artist_name).await?;
         let uri = format!("spotify:track:{}", track_id);
 
-        let device_id = self.get_active_device_id().await?;
+        let _device_id = self.get_active_device_id().await?;
 
         let resp = self
             .client

@@ -14,7 +14,6 @@ clap = { version = "4", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json"] }
 rand = "0.10.2"
 strsim = "0.11.1"
-easy-repl = "0.2.1"
 mini_async_repl = "0.2.1"
 anyhow = "1.0.104"
 base64 = "0.23.1"

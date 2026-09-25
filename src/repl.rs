@@ -2,10 +2,10 @@ use std::future::Future;
 use std::pin::Pin;
 use futures::lock::Mutex;
 use std::sync::{Arc};
-use easy_repl::anyhow;
 use mini_async_repl::{
     command::{Command, CommandArgInfo, ExecuteCommand},
     CommandStatus, Repl,
+    anyhow
 };
 
 use crate::helpers::get_input;

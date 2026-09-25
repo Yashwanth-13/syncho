@@ -379,21 +379,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "easy-repl"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81d0001ed25c451c57f8d6724d448a6546a5d78bbac77a63a22e32c735b7ea16"
-dependencies = [
- "anyhow",
- "rustyline",
- "rustyline-derive",
- "shell-words",
- "textwrap",
- "thiserror 1.0.69",
- "trie-rs",
-]
-
-[[package]]
 name = "either"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1914,7 +1899,6 @@ dependencies = [
  "cider-api",
  "clap",
  "dialoguer",
- "easy-repl",
  "futures",
  "mini_async_repl",
  "nowhear",

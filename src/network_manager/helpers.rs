@@ -12,5 +12,5 @@ pub fn make_song(track: Track) -> Song {
         None => {"".to_string()}
     };
 
-    Song { song_name: track.title.clone(), artist_name: track.artist.concat().clone(), album_name: album_name, position: 0 }
+    Song { song_name: track.title.clone(), artist_name: track.artist.first().cloned().unwrap_or_default(), album_name: album_name, position: 0 }
 }

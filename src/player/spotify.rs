@@ -19,6 +19,30 @@ pub struct SpotifyPlayer {
 
 use super::types::Song;
 
+fn clean_track_name(name: &str) -> String {
+    let mut cleaned = name.to_string();
+
+    // 1. Strip parenthesized/bracketed features: (feat. ...), [feat. ...], (ft. ...), [with ...]
+    for pattern in &["(feat", "[feat", "(ft.", "[ft.", "(ft ", "[ft ", "(with", "[with"] {
+        while let Some(pos) = cleaned.to_lowercase().find(pattern) {
+            if let Some(end_offset) = cleaned[pos..].find(|c| c == ')' || c == ']') {
+                cleaned.replace_range(pos..pos + end_offset + 1, "");
+            } else {
+                cleaned.truncate(pos);
+            }
+        }
+    }
+
+    // 2. Strip standalone " feat. ", " ft. ", " feat ", " ft "
+    for pattern in &[" feat. ", " ft. ", " feat ", " ft "] {
+        if let Some(pos) = cleaned.to_lowercase().find(pattern) {
+            cleaned.truncate(pos);
+        }
+    }
+
+    cleaned.trim().trim_matches(&['-', '–', '—', ' '][..]).to_string()
+}
+
 impl SpotifyPlayer {
     pub fn new(
         refresh_token: String,
@@ -344,23 +368,12 @@ impl SpotifyPlayer {
         Ok(())
     }
     
-    async fn search_track(&mut self, track: &str, album: &str, artist: &str) -> Result<(String, String)> {
-        // Build query dynamically — only include filters for non-empty fields.
-        // Sending "album: artist:" with empty values causes Spotify to return 0 results.
-        let mut parts = vec![format!("track:{}", track)];
-        if !artist.trim().is_empty() {
-            parts.push(format!("artist:{}", artist));
-        }
-        if !album.trim().is_empty() {
-            parts.push(format!("album:{}", album));
-        }
-        let query = parts.join(" ");
-
+    async fn execute_search(&mut self, query: &str, expected_artist: &str) -> Result<Option<(String, String)>> {
         let resp = self
             .client
             .get("https://api.spotify.com/v1/search")
             .bearer_auth(&self.access_token)
-            .query(&[("q", query.as_str()), ("type", "track"), ("limit", "1")])
+            .query(&[("q", query), ("type", "track"), ("limit", "10")])
             .send()
             .await?;
 
@@ -369,23 +382,95 @@ impl SpotifyPlayer {
 
         if Self::is_expired_token_error(status, &body) {
             self.refresh_access_token().await?;
-            return Box::pin(self.search_track(track,album, artist)).await;
+            return Box::pin(self.execute_search(query, expected_artist)).await;
         }
 
         if !status.is_success() {
             return Err(anyhow!("Spotify search failed ({}): {}", status, body));
         }
 
-        let item = body
+        let items = match body
             .get("tracks")
             .and_then(|v| v.get("items"))
-            .and_then(|v| v.get(0))
-            .ok_or_else(|| anyhow!("track not found: {} by {}", track, artist))?;
+            .and_then(|v| v.as_array())
+        {
+            Some(arr) if !arr.is_empty() => arr,
+            _ => return Ok(None),
+        };
 
-        let track_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
-        let album_uri = item.get("album").and_then(|v| v.get("uri")).and_then(|v| v.as_str()).unwrap_or("");
+        let expected_lower = expected_artist.to_lowercase();
 
-        Ok((track_id.to_string(), album_uri.to_string()))
+        // First pass: find a result whose artist matches what we expect
+        for item in items {
+            let artists_match = item
+                .get("artists")
+                .and_then(|v| v.as_array())
+                .map(|artists| {
+                    artists.iter().any(|a| {
+                        a.get("name")
+                            .and_then(|n| n.as_str())
+                            .map(|name| name.to_lowercase().contains(&expected_lower) || expected_lower.contains(&name.to_lowercase()))
+                            .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false);
+
+            if artists_match {
+                let track_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let album_uri = item.get("album").and_then(|v| v.get("uri")).and_then(|v| v.as_str()).unwrap_or("");
+                return Ok(Some((track_id.to_string(), album_uri.to_string())));
+            }
+        }
+
+        // No artist-matched result — return None so the next search tier is tried
+        Ok(None)
+    }
+
+    async fn search_track(&mut self, track: &str, album: &str, artist: &str) -> Result<(String, String)> {
+        let clean_track = clean_track_name(track);
+        let safe_track = clean_track.replace('"', "");
+        let safe_album = album.trim().replace('"', "");
+        let safe_raw_track = track.trim().replace('"', "");
+
+        // Extract primary artist: split on common multi-artist separators
+        // "VALORANT Music & KiNG MALA" → "VALORANT Music"
+        // "Darren Korb, Ashley Barrett" → "Darren Korb"
+        let primary_artist = artist
+            .split(&[',', '&'][..])
+            .next()
+            .unwrap_or(artist)
+            .trim()
+            .replace('"', "");
+
+        let mut candidates = Vec::new();
+
+        // 1. Track + Artist + Album (most specific)
+        if !safe_track.is_empty() && !primary_artist.is_empty() && !safe_album.is_empty() {
+            candidates.push(format!("track:\"{}\" artist:\"{}\" album:\"{}\"", safe_track, primary_artist, safe_album));
+        }
+
+        // 2. Track + Artist
+        if !safe_track.is_empty() && !primary_artist.is_empty() {
+            candidates.push(format!("track:\"{}\" artist:\"{}\"", safe_track, primary_artist));
+        }
+
+        // 3. Freeform: "{clean_track} {primary_artist}"
+        if !safe_track.is_empty() && !primary_artist.is_empty() {
+            candidates.push(format!("{} {}", safe_track, primary_artist));
+        }
+
+        // 4. Freeform with raw track + primary artist
+        if safe_raw_track != safe_track && !primary_artist.is_empty() {
+            candidates.push(format!("{} {}", safe_raw_track, primary_artist));
+        }
+
+        for q in &candidates {
+            if let Some(res) = self.execute_search(q, &primary_artist).await? {
+                return Ok(res);
+            }
+        }
+
+        Err(anyhow!("track not found: {} by {} (tried: {:?})", track, artist, candidates))
     }
 
     pub async fn play(&mut self, song: &Song) -> Result<()> {

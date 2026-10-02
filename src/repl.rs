@@ -15,8 +15,8 @@ use crate::player::types::Song;
 
 fn get_song() -> Song {
     let song_name = get_input(&"Song name".to_string(), false);
-    let album_name = get_input(&"Album Name".to_string(), true);
     let artist_name = get_input(&"Artist Name".to_string(), true);
+    let album_name = get_input(&"Album Name".to_string(), true);
 
     Song { song_name, artist_name, album_name, position: 0 }
 }

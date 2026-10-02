@@ -344,8 +344,17 @@ impl SpotifyPlayer {
         Ok(())
     }
     
-    async fn search_track(&mut self, track: &str, album: &str,artist: &str) -> Result<(String, String)> {
-        let query = format!("track:{} album:{} artist:{}", track,album, artist);
+    async fn search_track(&mut self, track: &str, album: &str, artist: &str) -> Result<(String, String)> {
+        // Build query dynamically — only include filters for non-empty fields.
+        // Sending "album: artist:" with empty values causes Spotify to return 0 results.
+        let mut parts = vec![format!("track:{}", track)];
+        if !artist.trim().is_empty() {
+            parts.push(format!("artist:{}", artist));
+        }
+        if !album.trim().is_empty() {
+            parts.push(format!("album:{}", album));
+        }
+        let query = parts.join(" ");
 
         let resp = self
             .client

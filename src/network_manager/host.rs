@@ -57,9 +57,7 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster, target_player: Str
             },
 
             MediaEvent::PositionChanged { player_name, position } => {
-                println!("Position changed - Player: {:?}", &player_name);
                 if is_same_player(&target_player, &player_name) {
-                    println!("Position changed: {:?}", &position);
                     broadcaster.broadcast(NetworkMessage::Seek{position: position.as_millis().to_string()});
                 } // Do something only when the state change is from our player
             },

@@ -131,7 +131,6 @@ impl CiderControl {
                     count = count + 1;
                 }
             }
-
         }
     }
 
@@ -160,14 +159,6 @@ impl CiderControl {
 
     pub async fn play_pause(&self) -> Result<(), CiderError> {
         self.cider.play_pause().await
-    }
-
-    pub async fn previous(&self) -> Result<(), CiderError> {
-        self.cider.previous().await
-    }
-
-    pub async fn next(&self) -> Result<(), CiderError> {
-        self.cider.next().await
     }
 
     pub async fn play_next(&self, song: &Song) -> Result<(), CiderError> {

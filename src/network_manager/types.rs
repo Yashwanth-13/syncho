@@ -13,8 +13,6 @@ pub enum NetworkMessage {
     CurrentState{song: Option<Song>},
     Play(Song),
     PlayPause,
-    Next(Song),
-    Previous(Song),
     PlayLater(Song),
     PlayNext(Song),
 }

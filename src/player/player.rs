@@ -119,36 +119,6 @@ impl PlayState {
             }
         }
     }
-
-    //plays previous song
-    pub async fn previous(&mut self) {
-        match &mut self.player {
-            Player::Cider(client) => {
-                let _ = client.previous().await;
-            },
-
-            Player::Spotify(client) => {
-                if let Err(e) = client.previous().await {
-                    eprintln!("Spotify implementation failed: {}", e);
-                }
-            }
-        }
-    }
-    
-    //plays the next song
-    pub async fn next(&mut self) {
-        match &mut self.player {
-            Player::Cider(client) => {
-                let _ = client.next().await;
-            },
-
-            Player::Spotify(client) => {
-                if let Err(e) = client.next().await {
-                    eprintln!("Spotify implementation failed: {}", e);
-                }
-            }
-        }
-    }
     
     //addes the song to queue(this is the song that plays immediately after the present one)
     pub async fn play_next(&mut self, song: Song) {

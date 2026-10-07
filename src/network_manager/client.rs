@@ -101,16 +101,6 @@ async fn apply_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>) {
             ps.play_pause().await;
         }
 
-        NetworkMessage::Next(song)=> {
-            println!("[syncho] Skipping to next song {}", song.song_name);
-            ps.play(song).await;
-        }
-
-        NetworkMessage::Previous(song) => {
-            println!("[syncho] Skipping to previous song: {} — {}", song.song_name, song.artist_name);
-            ps.play(song).await;
-        }
-
         NetworkMessage::PlayLater(song)=> {
             println!("[syncho] Queue later: {}", song.song_name);
             ps.play_later(song).await;

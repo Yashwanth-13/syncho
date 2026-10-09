@@ -166,4 +166,15 @@ impl CiderControl {
         self.cider.play_next("songs", &song_id).await
     }
 
+    pub async fn get_queue(&self) -> Vec<String> {
+        let queue = self.cider.get_queue().await.unwrap();
+        let mut songs:Vec<String> = Vec::new();
+        for i in queue {
+            let attr = i.attributes.unwrap();
+            songs.push(format!("{} by {} from {}", attr.name, attr.artist_name, attr.album_name));
+        }
+
+        songs
+        
+    }
 }

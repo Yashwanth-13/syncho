@@ -1,12 +1,13 @@
 use super::types::*;
 use futures::StreamExt;
 use futures::lock::Mutex;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast};
 use std::sync::{Arc};
 
-use crate::network_manager::helpers::{is_same_player, make_song};
+use crate::network_manager::helpers::{is_same_player, make_song, process_event};
 use crate::player::types::{PlayState};
 use nowhear::{MediaEvent, MediaSource, MediaSourceBuilder, PlaybackState};
 
@@ -95,12 +96,13 @@ async fn handle_client(
     session_code: Arc<String>,
     mut rx: broadcast::Receiver<NetworkMessage>,
 ) {
-    let (read_half, mut writer) = stream.into_split();
-    let mut reader = BufReader::new(read_half);
+    let (read_half, write_half) = stream.into_split();
+    let reader = Arc::new(Mutex::new(BufReader::new(read_half)));
+    let writer: Arc<Mutex<BufWriter<OwnedWriteHalf>>> = Arc::new(Mutex::new(BufWriter::new(write_half)));
     let mut line = String::new();
     
     line.clear();
-    if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
+    if reader.lock().await.read_line(&mut line).await.unwrap_or(0) == 0 {
         return;
     }
 
@@ -110,14 +112,14 @@ async fn handle_client(
     };
 
     if !authed {
-        let _ = writer
+        let _ = writer.lock().await
             .write_all(NetworkMessage::AuthFail.to_wire().as_bytes())
             .await;
         println!("[syncho] Client failed authentication.");
         return;
     }
 
-    let _ = writer
+    let _ = writer.lock().await
         .write_all(NetworkMessage::AuthOk.to_wire().as_bytes())
         .await;
     println!("[syncho] Client authenticated successfully.");
@@ -131,15 +133,18 @@ async fn handle_client(
         None => NetworkMessage::CurrentState{song: None}
     };
 
-    let _ = writer
+    let _ = writer.lock().await
     .write_all(message.to_wire().as_bytes())
     .await;
+
+    // Client message listener
+    tokio::spawn(read_client_stream(Arc::clone(&reader), Arc::clone(&writer), play_state));
 
     // Forward broadcast messages
     loop {
         match rx.recv().await {
             Ok(msg) => {
-                if writer
+                if writer.lock().await
                     .write_all(msg.to_wire().as_bytes())
                     .await
                     .is_err()
@@ -153,6 +158,23 @@ async fn handle_client(
             }
             Err(broadcast::error::RecvError::Closed) => break,
         }
+    }
+}
+
+// Listen to messages from clients
+async fn read_client_stream(reader: Arc<Mutex<BufReader<OwnedReadHalf>>>, writer: Arc<Mutex<BufWriter<OwnedWriteHalf>>>, play_state: Arc<Mutex<PlayState>>) {
+    let mut line = String::new();
+    loop {
+        let _ = reader.lock().await.read_line(&mut line).await;
+        let msg: NetworkMessage = match serde_json::from_str(line.trim()) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("[syncho] Bad message from host: {} — {:?}", e, line);
+                continue;
+            }
+        };
+
+        process_event(msg, Arc::clone(&play_state), Some(Arc::clone(&writer))).await;
     }
 }
 

@@ -98,6 +98,7 @@ impl PlayState {
                 let _ = client.play_later(&song).await;
             },
 
+            // TODO
             Player::Spotify(client) => {
                 if let Err(e) = client.add_to_queue(&song).await {
                     eprintln!("Spotify implementation failed: {}", e);
@@ -127,10 +128,25 @@ impl PlayState {
                 let _ = client.play_next(&song).await;
             },
 
+            // TODO
             Player::Spotify(client) => {
                 if let Err(e) = client.add_to_queue(&song).await {
                     eprintln!("Spotify implementation failed: {}", e);
                 }
+            }
+        }
+    }
+
+    // gets the player's queue
+    pub async fn get_queue(&self) -> Vec<String> {
+        match &self.player {
+            Player::Cider(client) => {
+                client.get_queue().await
+            },
+
+            // TODO
+            Player::Spotify(client) => {
+                Vec::new()
             }
         }
     }

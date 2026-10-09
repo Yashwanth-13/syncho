@@ -1,3 +1,5 @@
+use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::net::tcp::{OwnedWriteHalf};
 use std::future::Future;
 use std::pin::Pin;
 use futures::lock::Mutex;
@@ -45,7 +47,6 @@ impl ExecuteCommand for CodeHandler {
 struct PlayLaterHandler {
     play_state: Arc<Mutex<PlayState>>,
     broadcaster: Option<HostBroadcaster>,
-    is_host: bool
 }
 
 impl PlayLaterHandler {
@@ -76,18 +77,23 @@ impl ExecuteCommand for PlayLaterHandler {
 struct PlayNextHandler {
     play_state: Arc<Mutex<PlayState>>,
     broadcaster: Option<HostBroadcaster>,
-    is_host: bool
+    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>
 }
 
 impl PlayNextHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let song = get_song();
         match self.broadcaster.as_mut() {
-            Some(bc) => {bc.broadcast(NetworkMessage::PlayNext(song.clone()));},
-            _ => {}
+            
+            Some(bc) => {
+                self.play_state.lock().await.play_next(song).await;
+            },
+
+            None => {
+                let writer = self.writer.as_mut().unwrap();
+                let _ = writer.lock().await.write_all(NetworkMessage::PlayNext(song).to_wire().as_bytes()).await;
+            }
         }
-        let play_state = Arc::clone(&self.play_state);
-        play_state.lock().await.play_next(song).await;
         Ok(CommandStatus::Done)
     }
 }
@@ -103,7 +109,49 @@ impl ExecuteCommand for PlayNextHandler {
 }
 // --
 
-pub async fn looper(code: String, play_state: Arc<Mutex<PlayState>>, broadcaster: Option<HostBroadcaster>, is_host: bool) {
+// -- queue command: Get the host's queue of songs
+struct QueueHandler {
+    play_state: Arc<Mutex<PlayState>>,
+    broadcaster: Option<HostBroadcaster>,
+    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>
+}
+
+impl QueueHandler {
+    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
+        match self.broadcaster.as_mut() {
+            
+            Some(bc) => {
+                let play_state = Arc::clone(&self.play_state);
+                let queue = play_state.lock().await.get_queue().await;
+
+                let mut index = 1;
+                for song in queue {
+                    println!("{index} - {song}");
+                    index += 1;
+                }
+            },
+
+            None => {
+                let writer = self.writer.as_mut().unwrap();
+                let _ = writer.lock().await.write_all(NetworkMessage::GetQueue.to_wire().as_bytes()).await;
+            }
+        }
+        Ok(CommandStatus::Done)
+    }
+}
+
+impl ExecuteCommand for QueueHandler {
+    fn execute(
+        &mut self,
+        _args: Vec<String>,
+        _args_info: Vec<CommandArgInfo>,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
+        Box::pin(self.handle_command())
+    }
+}
+// --
+
+pub async fn looper(code: String, play_state: Arc<Mutex<PlayState>>, broadcaster: Option<HostBroadcaster>, writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>) { 
     let mut repl = Repl::builder()
         .add("code", Command::new(
             "Print the code",
@@ -113,21 +161,21 @@ pub async fn looper(code: String, play_state: Arc<Mutex<PlayState>>, broadcaster
             })
         ))
         .add("pn", Command::new(
-            "Play a specific song next",
+            "Play a specific song next (start of queue)",
             vec![],
             Box::new(PlayNextHandler {
                 play_state: Arc::clone(&play_state),
                 broadcaster: broadcaster.clone(),
-                is_host: is_host.clone()
+                writer: writer.clone()
             })
         ))
-        .add("pl", Command::new(
-            "Queue a song to play later (end of queue)",
+        .add("get-queue", Command::new(
+            "Get the host's song queue", 
             vec![],
-            Box::new(PlayLaterHandler {
+            Box::new(QueueHandler {
                 play_state: Arc::clone(&play_state),
                 broadcaster: broadcaster.clone(),
-                is_host: is_host.clone()
+                writer: writer.clone()
             })
         ))
         .build()

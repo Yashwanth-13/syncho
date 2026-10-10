@@ -113,7 +113,6 @@ impl CiderControl {
         let encoded_song: String = form_urlencoded::byte_serialize(song.song_name.as_bytes()).collect();
         let path = format!("/v1/catalog/in/search?types=songs&term={}", encoded_song);
 
-        println!("path - {}", &path);
         let mut back_off: f64 = 1.0;
         let mut count = 0;
         loop {
@@ -155,7 +154,6 @@ impl CiderControl {
     }
 
     pub async fn play(&self, song: &Song) -> Result<(), CiderError> {
-        println!("tryna play - {:?}", &song);
         let song_id = self.get_id(song).await.unwrap();
         let _ = self.cider.play_item("songs", &song_id).await;
         self.cider.seek_ms(song.position).await

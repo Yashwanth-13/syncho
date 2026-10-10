@@ -26,12 +26,9 @@ pub async fn join_session(
     };
 
     let _ = send(&writer, auth_msg).await;
-
-    println!("Sent auth msg");
     // Read auth response
     let mut line = String::new();
     {reader.lock().await.read_line(&mut line).await?;}
-    println!("{line}");
     match serde_json::from_str::<NetworkMessage>(line.trim())? {
         NetworkMessage::AuthOk => {
             println!("[syncho] Authenticated! Receiving sync events…");

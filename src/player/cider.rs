@@ -1,5 +1,5 @@
 use std::{thread::sleep, time::Duration};
-
+use url::form_urlencoded;
 use cider_api::{CiderClient, CiderError};
 
 use serde::Deserialize;
@@ -110,8 +110,10 @@ impl CiderControl {
     }
 
     async fn get_id(&self, song: &Song) -> Option<String>{
-        let path = format!("/v1/catalog/in/search?types=songs&term={}", song.song_name);
+        let encoded_song: String = form_urlencoded::byte_serialize(song.song_name.as_bytes()).collect();
+        let path = format!("/v1/catalog/in/search?types=songs&term={}", encoded_song);
 
+        println!("path - {}", &path);
         let mut back_off: f64 = 1.0;
         let mut count = 0;
         loop {
@@ -153,6 +155,7 @@ impl CiderControl {
     }
 
     pub async fn play(&self, song: &Song) -> Result<(), CiderError> {
+        println!("tryna play - {:?}", &song);
         let song_id = self.get_id(song).await.unwrap();
         let _ = self.cider.play_item("songs", &song_id).await;
         self.cider.seek_ms(song.position).await

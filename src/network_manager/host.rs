@@ -5,6 +5,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast};
+use std::net::SocketAddr;
 use std::sync::{Arc};
 
 use crate::network_manager::helpers::{is_same_player, make_song, process_event, send};
@@ -78,9 +79,9 @@ async fn accept_loop(
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
-                println!("[syncho] Client connecting from {}", addr);
+                println!("[syncho] Client connecting from {}", &addr);
                 let rx = tx.subscribe();
-                tokio::spawn(handle_client(stream, Arc::clone(&play_state), Arc::clone(&session_code), rx));
+                tokio::spawn(handle_client(stream, addr, Arc::clone(&play_state), Arc::clone(&session_code), rx));
             }
             Err(e) => {
                 eprintln!("[syncho] Accept error: {}", e);
@@ -92,6 +93,7 @@ async fn accept_loop(
 
 async fn handle_client(
     stream: TcpStream,
+    client_addr: SocketAddr,
     play_state: Arc<Mutex<PlayState>>,
     session_code: Arc<String>,
     mut rx: broadcast::Receiver<NetworkMessage>,
@@ -105,14 +107,12 @@ async fn handle_client(
         reader.lock().await.read_line(&mut line).await.unwrap_or(0)
     }; 
     
-    println!("Result - {res}");
     if res == 0 {
         return;
     }
 
     let authed = match serde_json::from_str::<NetworkMessage>(line.trim()) {
         Ok(NetworkMessage::Auth { code }) => {
-            println!("Got code - {code}");
             code == *session_code
         },
         _ => false,
@@ -120,12 +120,12 @@ async fn handle_client(
 
     if !authed {
         let _ = send(&writer, NetworkMessage::AuthFail).await;
-        println!("[syncho] Client failed authentication.");
+        println!("[syncho] Client failed authentication. - {}", &client_addr);
         return;
     }
 
     let _ = send(&writer, NetworkMessage::AuthOk).await;
-    println!("[syncho] Client authenticated successfully.");
+    println!("[syncho] Client authenticated successfully. - {}", &client_addr);
 
     let curr_song = {
         play_state.lock().await.get_current_song().await
@@ -139,7 +139,7 @@ async fn handle_client(
     let _ = send(&writer, message).await;
 
     // Client message listener
-    tokio::spawn(read_client_stream(Arc::clone(&reader), Arc::clone(&writer), play_state));
+    tokio::spawn(read_client_stream(client_addr, Arc::clone(&reader), Arc::clone(&writer), play_state));
 
     // Forward broadcast messages
     loop {
@@ -163,13 +163,22 @@ async fn handle_client(
 }
 
 // Listen to messages from clients
-async fn read_client_stream(reader: Arc<Mutex<BufReader<OwnedReadHalf>>>, writer: Arc<Mutex<BufWriter<OwnedWriteHalf>>>, play_state: Arc<Mutex<PlayState>>) {
+async fn read_client_stream(client_addr: SocketAddr, reader: Arc<Mutex<BufReader<OwnedReadHalf>>>, writer: Arc<Mutex<BufWriter<OwnedWriteHalf>>>, play_state: Arc<Mutex<PlayState>>) {
     let mut line = String::new();
     loop {
         line.clear();
-        let _ = {
+        let read_bytes = {
             reader.lock().await.read_line(&mut line).await
         };
+
+        match read_bytes {
+            Ok(0) => {
+                println!("[syncho] Client disconnected - {}", &client_addr);
+                return;
+            }
+
+            _ => {}
+        }
         let msg: NetworkMessage = match serde_json::from_str(line.trim()) {
             Ok(m) => m,
             Err(e) => {

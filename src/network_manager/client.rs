@@ -2,6 +2,7 @@ use super::types::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpStream};
+use std::process::exit;
 use std::sync::{Arc};
 use futures::lock::Mutex;
 use crate::network_manager::helpers::{process_event, send};
@@ -58,7 +59,7 @@ async fn listen_to_host(mut line: String, reader: Arc<Mutex<BufReader<OwnedReadH
         let n = {reader.lock().await.read_line(&mut line).await.unwrap()};
         if n == 0 {
             println!("[syncho] Host closed the connection.");
-            break;
+            exit(0);
         }
 
         let msg: NetworkMessage = match serde_json::from_str(line.trim()) {

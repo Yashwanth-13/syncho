@@ -43,6 +43,7 @@ pub async fn process_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>
         }
 
         NetworkMessage::CurrentState{song} => {
+            println!("curr song - {:?}", song);
             match song {
                 Some(host_song) => {
                     ps.play(host_song.clone()).await;

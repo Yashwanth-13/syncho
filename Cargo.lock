@@ -1842,6 +1842,7 @@ dependencies = [
  "strsim",
  "tokio",
  "unicode-normalization",
+ "url",
 ]
 
 [[package]]

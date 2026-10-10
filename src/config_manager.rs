@@ -52,7 +52,7 @@ impl Config {
             match serde_json::from_str::<Config>(&config_data) {
                 Ok(config) => config,
                 Err(_) => {
-                    // File is empty or corrupt (e.g. crashed during setup) — start fresh
+                    // File is empty or corrupt
                     println!("Config file is invalid or empty. Re-running setup...\n");
                     fs::remove_file(&file_path).unwrap();
                     Config::create_config(path)

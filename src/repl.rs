@@ -1,3 +1,5 @@
+use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::net::tcp::{OwnedWriteHalf};
 use std::future::Future;
 use std::pin::Pin;
 use futures::lock::Mutex;
@@ -41,67 +43,19 @@ impl ExecuteCommand for CodeHandler {
     }
 }
 
-// "pp" command: play-pause the player
-struct PlayPauseHandler {
-    play_state: Arc<Mutex<PlayState>>,
-    broadcaster: HostBroadcaster,
-}
-
-impl PlayPauseHandler {
-    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        let play_state = Arc::clone(&self.play_state);
-        play_state.lock().await.play_pause().await;
-        self.broadcaster.broadcast(NetworkMessage::PlayPause);
-        Ok(CommandStatus::Done)
-    }
-}
-
-impl ExecuteCommand for PlayPauseHandler {
-    fn execute(
-        &mut self,
-        _args: Vec<String>,
-        _args_info: Vec<CommandArgInfo>,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
-        Box::pin(self.handle_command())
-    }
-}
-
-// "ps" command: play a specific song
-struct PlaySongHandler {
-    play_state: Arc<Mutex<PlayState>>,
-    broadcaster: HostBroadcaster,
-}
-
-impl PlaySongHandler {
-    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        let song = get_song();
-        self.broadcaster.broadcast(NetworkMessage::Play(song.clone()));
-        // Arc::clone(&self.play_state).lock().unwrap().play(song).await;
-        self.play_state.lock().await.play(song).await;
-        Ok(CommandStatus::Done)
-    }
-}
-impl ExecuteCommand for PlaySongHandler {
-    fn execute(
-        &mut self,
-        _args: Vec<String>,
-        _args_info: Vec<CommandArgInfo>,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
-        Box::pin(self.handle_command())
-    }
-}
-// --
-
 // "pl" command: play a specific song later
 struct PlayLaterHandler {
     play_state: Arc<Mutex<PlayState>>,
-    broadcaster: HostBroadcaster,
+    broadcaster: Option<HostBroadcaster>,
 }
 
 impl PlayLaterHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let song = get_song();
-        self.broadcaster.broadcast(NetworkMessage::PlayLater(song.clone()));
+        match self.broadcaster.as_mut() {
+            Some(bc) => {bc.broadcast(NetworkMessage::PlayNext(song.clone()));},
+            _ => {}
+        }
         Arc::clone(&self.play_state).lock().await.play_later(song).await;
         Ok(CommandStatus::Done)
     }
@@ -118,96 +72,29 @@ impl ExecuteCommand for PlayLaterHandler {
 }
 // --
 
-// -- previous command: Play a previous song
-struct PlayPreviousHandler {
-    play_state: Arc<Mutex<PlayState>>,
-    broadcaster: HostBroadcaster,
-}
-
-impl PlayPreviousHandler {
-    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        let mut play_state = self.play_state.lock().await;
-        play_state.previous().await;
-        
-        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-
-        let mut curr_song = play_state.get_current_song().await;
-        if curr_song.is_none() {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            curr_song = play_state.get_current_song().await;
-        }
-
-        if let Some(song) = curr_song {
-            println!("[syncho] Playing previous song: {} — {}", song.song_name, song.artist_name);
-            self.broadcaster.broadcast(NetworkMessage::Previous(song.clone()));
-        } else {
-            println!("[syncho] Skipped to previous track (no track details returned).");
-        }
-        Ok(CommandStatus::Done)
-    }
-}
-
-impl ExecuteCommand for PlayPreviousHandler {
-    fn execute(
-        &mut self,
-        _args: Vec<String>,
-        _args_info: Vec<CommandArgInfo>,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
-        Box::pin(self.handle_command())
-    }
-}
-// --
-
-// -- next command: Skip song to next one
-struct NextHandler {
-    play_state: Arc<Mutex<PlayState>>,
-    broadcaster: HostBroadcaster,
-}
-
-impl NextHandler {
-    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        let mut play_state = self.play_state.lock().await;
-        play_state.next().await;
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let curr_song = play_state.get_current_song().await;
-        // if curr_song.is_none() {
-        //     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        //     curr_song = play_state.lock().unwrap().get_current_song().await;
-        // }
-
-        if let Some(song) = curr_song {
-            println!("[syncho] Playing next song: {} — {}", &song.song_name, &song.artist_name);
-            self.broadcaster.broadcast(NetworkMessage::Next(song.clone()));
-        } else {
-            println!("[syncho] Skipped to next track (no track details returned).");
-        }
-        Ok(CommandStatus::Done)
-    }
-}
-
-impl ExecuteCommand for NextHandler {
-    fn execute(
-        &mut self,
-        _args: Vec<String>,
-        _args_info: Vec<CommandArgInfo>,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
-        Box::pin(self.handle_command())
-    }
-}
-// --
 
 // -- pn command: Play a specific song next
 struct PlayNextHandler {
     play_state: Arc<Mutex<PlayState>>,
-    broadcaster: HostBroadcaster,
+    broadcaster: Option<HostBroadcaster>,
+    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>
 }
 
 impl PlayNextHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let song = get_song();
-        self.broadcaster.broadcast(NetworkMessage::PlayNext(song.clone()));
-        let play_state = Arc::clone(&self.play_state);
-        play_state.lock().await.play_next(song).await;
+        match self.broadcaster.as_mut() {
+            
+            Some(bc) => {
+                self.play_state.lock().await.play_next(song).await;
+            },
+
+            None => {
+                let mut writer = self.writer.as_mut().unwrap().lock().await;
+                let _ = writer.write_all(NetworkMessage::PlayNext(song).to_wire().as_bytes()).await;
+                let _ = writer.flush().await;
+            }
+        }
         Ok(CommandStatus::Done)
     }
 }
@@ -223,7 +110,50 @@ impl ExecuteCommand for PlayNextHandler {
 }
 // --
 
-pub async fn looper(code: String, play_state: Arc<Mutex<PlayState>>, broadcaster: HostBroadcaster) {
+// -- queue command: Get the host's queue of songs
+struct QueueHandler {
+    play_state: Arc<Mutex<PlayState>>,
+    broadcaster: Option<HostBroadcaster>,
+    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>
+}
+
+impl QueueHandler {
+    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
+        match self.broadcaster.as_mut() {
+            
+            Some(bc) => {
+                let play_state = Arc::clone(&self.play_state);
+                let queue = play_state.lock().await.get_queue().await;
+
+                let mut index = 1;
+                for song in queue {
+                    println!("{index} - {song}");
+                    index += 1;
+                }
+            },
+
+            None => {
+                let mut writer = self.writer.as_mut().unwrap().lock().await;
+                let _ = writer.write_all(NetworkMessage::GetQueue.to_wire().as_bytes()).await;
+                let _ = writer.flush().await;
+            }
+        }
+        Ok(CommandStatus::Done)
+    }
+}
+
+impl ExecuteCommand for QueueHandler {
+    fn execute(
+        &mut self,
+        _args: Vec<String>,
+        _args_info: Vec<CommandArgInfo>,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
+        Box::pin(self.handle_command())
+    }
+}
+// --
+
+pub async fn looper(code: String, play_state: Arc<Mutex<PlayState>>, broadcaster: Option<HostBroadcaster>, writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>) { 
     let mut repl = Repl::builder()
         .add("code", Command::new(
             "Print the code",
@@ -232,52 +162,22 @@ pub async fn looper(code: String, play_state: Arc<Mutex<PlayState>>, broadcaster
                 code: code,
             })
         ))
-        .add("ps", Command::new(
-            "Play a specific song",
-            vec![],
-            Box::new(PlaySongHandler {
-                play_state: Arc::clone(&play_state),
-                broadcaster: broadcaster.clone(),
-            }),
-        ))
-        .add("pp", Command::new(
-            "Play-Pause the player",
-            vec![],
-            Box::new(PlayPauseHandler {
-                play_state: Arc::clone(&play_state),
-                broadcaster: broadcaster.clone(),
-            })
-        ))
-        .add("pl", Command::new(
-            "Queue a song to play later (end of queue)",
-            vec![],
-            Box::new(PlayLaterHandler {
-                play_state: Arc::clone(&play_state),
-                broadcaster: broadcaster.clone(),
-            })
-        ))
-        .add("previous", Command::new(
-            "Play previous song",
-            vec![],
-            Box::new(PlayPreviousHandler {
-                play_state: Arc::clone(&play_state),
-                broadcaster: broadcaster.clone(),
-            })
-        ))
-        .add("next", Command::new(
-            "Skip to next song",
-            vec![],
-            Box::new(NextHandler {
-                play_state: Arc::clone(&play_state),
-                broadcaster: broadcaster.clone(),
-            })
-        ))
         .add("pn", Command::new(
-            "Play a specific song next",
+            "Play a specific song next (start of queue)",
             vec![],
             Box::new(PlayNextHandler {
                 play_state: Arc::clone(&play_state),
                 broadcaster: broadcaster.clone(),
+                writer: writer.clone()
+            })
+        ))
+        .add("get-queue", Command::new(
+            "Get the host's song queue", 
+            vec![],
+            Box::new(QueueHandler {
+                play_state: Arc::clone(&play_state),
+                broadcaster: broadcaster.clone(),
+                writer: writer.clone()
             })
         ))
         .build()

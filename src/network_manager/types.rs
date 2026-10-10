@@ -13,10 +13,10 @@ pub enum NetworkMessage {
     CurrentState{song: Option<Song>},
     Play(Song),
     PlayPause,
-    Next(Song),
-    Previous(Song),
-    PlayLater(Song),
+    // PlayLater(Song),
     PlayNext(Song),
+    GetQueue,
+    Queue{queue: Vec<String>}
 }
 
 impl NetworkMessage {

@@ -1,5 +1,5 @@
 use std::{thread::sleep, time::Duration};
-
+use url::form_urlencoded;
 use cider_api::{CiderClient, CiderError};
 
 use serde::Deserialize;
@@ -110,7 +110,8 @@ impl CiderControl {
     }
 
     async fn get_id(&self, song: &Song) -> Option<String>{
-        let path = format!("/v1/catalog/in/search?types=songs&term={}", song.song_name);
+        let encoded_song: String = form_urlencoded::byte_serialize(song.song_name.as_bytes()).collect();
+        let path = format!("/v1/catalog/in/search?types=songs&term={}", encoded_song);
 
         let mut back_off: f64 = 1.0;
         let mut count = 0;
@@ -131,13 +132,18 @@ impl CiderControl {
                     count = count + 1;
                 }
             }
-
         }
     }
 
     pub async fn get_current_song(&self) -> Option<Song> {
-        if let Some(track)  = self.cider.now_playing().await.unwrap() {
-            Some(Song{song_name: track.name.clone(), artist_name: track.artist_name.clone(), album_name: track.album_name.clone(), position: track.current_position_ms()})
+        if let Ok(track)  = self.cider.now_playing().await {
+            match track {
+                Some(track) => {
+                    Some(Song{song_name: track.name.clone(), artist_name: track.artist_name.clone(), album_name: track.album_name.clone(), position: track.current_position_ms()})
+                }
+
+                _ => None
+            }
         } else {
             None
         }
@@ -162,17 +168,20 @@ impl CiderControl {
         self.cider.play_pause().await
     }
 
-    pub async fn previous(&self) -> Result<(), CiderError> {
-        self.cider.previous().await
-    }
-
-    pub async fn next(&self) -> Result<(), CiderError> {
-        self.cider.next().await
-    }
-
     pub async fn play_next(&self, song: &Song) -> Result<(), CiderError> {
         let song_id = self.get_id(song).await.unwrap();
         self.cider.play_next("songs", &song_id).await
     }
 
+    pub async fn get_queue(&self) -> Vec<String> {
+        let queue = self.cider.get_queue().await.unwrap();
+        let mut songs:Vec<String> = Vec::new();
+        for i in queue {
+            let attr = i.attributes.unwrap();
+            songs.push(format!("{} by {} from {}", attr.name, attr.artist_name, attr.album_name));
+        }
+
+        songs
+        
+    }
 }

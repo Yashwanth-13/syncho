@@ -98,6 +98,7 @@ impl PlayState {
                 let _ = client.play_later(&song).await;
             },
 
+            // TODO
             Player::Spotify(client) => {
                 if let Err(e) = client.add_to_queue(&song).await {
                     eprintln!("Spotify implementation failed: {}", e);
@@ -119,36 +120,6 @@ impl PlayState {
             }
         }
     }
-
-    //plays previous song
-    pub async fn previous(&mut self) {
-        match &mut self.player {
-            Player::Cider(client) => {
-                let _ = client.previous().await;
-            },
-
-            Player::Spotify(client) => {
-                if let Err(e) = client.previous().await {
-                    eprintln!("Spotify implementation failed: {}", e);
-                }
-            }
-        }
-    }
-    
-    //plays the next song
-    pub async fn next(&mut self) {
-        match &mut self.player {
-            Player::Cider(client) => {
-                let _ = client.next().await;
-            },
-
-            Player::Spotify(client) => {
-                if let Err(e) = client.next().await {
-                    eprintln!("Spotify implementation failed: {}", e);
-                }
-            }
-        }
-    }
     
     //addes the song to queue(this is the song that plays immediately after the present one)
     pub async fn play_next(&mut self, song: Song) {
@@ -157,10 +128,26 @@ impl PlayState {
                 let _ = client.play_next(&song).await;
             },
 
+            
             Player::Spotify(client) => {
                 if let Err(e) = client.add_to_queue(&song).await {
                     eprintln!("Spotify implementation failed: {}", e);
                 }
+            }
+        }
+    }
+
+    // gets the player's queue
+    pub async fn get_queue(&self) -> Vec<String> {
+        match &self.player {
+            Player::Cider(client) => {
+                client.get_queue().await
+            },
+
+            // TODO
+            Player::Spotify(client) => {
+                Vec::new()
+
             }
         }
     }

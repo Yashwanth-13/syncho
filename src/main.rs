@@ -44,6 +44,7 @@ async fn main() {
 
     } else if args.join {
         let host_addr = format!("{}:8080", get_input(&"Host IP".to_string(), false));
+        // let host_addr = "127.0.0.1:8080";
         let code = get_input(&"Session Code".to_string(), false);
         
         let result = join_session(&host_addr, &code, play_state.clone()).await;

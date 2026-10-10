@@ -5,7 +5,7 @@ use nowhear::{Track};
 use crate::player::types::Song;
 use crate::player::player::PlayState;
 use std::sync::{Arc};
-use futures::lock::Mutex;
+use futures::lock::{self, Mutex};
 
 pub fn is_same_player(target_player: &String, current_player: &String) -> bool {
     current_player.to_lowercase().contains(target_player)
@@ -19,6 +19,13 @@ pub fn make_song(track: Track) -> Song {
     };
 
     Song { song_name: track.title.clone(), artist_name: track.artist.first().cloned().unwrap_or_default(), album_name: album_name, position: 0 }
+}
+
+pub async fn send(writer: &Arc<Mutex<BufWriter<OwnedWriteHalf>>>, msg: NetworkMessage) -> std::io::Result<()> {
+    let mut locked_wr = writer.lock().await;
+
+    locked_wr.write_all(msg.to_wire().as_bytes()).await?;
+    locked_wr.flush().await
 }
 
 /// Process the receieved event
@@ -60,7 +67,7 @@ pub async fn process_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>
 
         NetworkMessage::GetQueue => {
             let queue = ps.get_queue().await;
-            let _ = writer.unwrap().lock().await.write(NetworkMessage::Queue { queue: queue }.to_wire().as_bytes());
+            let _ = send(&writer.unwrap(), NetworkMessage::Queue { queue }).await;
         }
 
         NetworkMessage::PlayNext(song)=> {

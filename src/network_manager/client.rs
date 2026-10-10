@@ -4,7 +4,7 @@ use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpStream};
 use std::sync::{Arc};
 use futures::lock::Mutex;
-use crate::network_manager::helpers::process_event;
+use crate::network_manager::helpers::{process_event, send};
 use crate::player::player::PlayState;
 
 pub async fn join_session(
@@ -24,13 +24,13 @@ pub async fn join_session(
         code: session_code.to_string(),
     };
 
-    writer.lock().await
-        .write_all(auth_msg.to_wire().as_bytes())
-        .await?;
+    let _ = send(&writer, auth_msg).await;
 
+    println!("Sent auth msg");
     // Read auth response
     let mut line = String::new();
-    reader.lock().await.read_line(&mut line).await?;
+    {reader.lock().await.read_line(&mut line).await?;}
+    println!("{line}");
     match serde_json::from_str::<NetworkMessage>(line.trim())? {
         NetworkMessage::AuthOk => {
             println!("[syncho] Authenticated! Receiving sync events…");
@@ -55,7 +55,7 @@ pub async fn join_session(
 async fn listen_to_host(mut line: String, reader: Arc<Mutex<BufReader<OwnedReadHalf>>>, play_state: Arc<Mutex<PlayState>>) {
     loop {
         line.clear();
-        let n = reader.lock().await.read_line(&mut line).await.unwrap();
+        let n = {reader.lock().await.read_line(&mut line).await.unwrap()};
         if n == 0 {
             println!("[syncho] Host closed the connection.");
             break;
@@ -65,6 +65,7 @@ async fn listen_to_host(mut line: String, reader: Arc<Mutex<BufReader<OwnedReadH
             Ok(m) => m,
             Err(e) => {
                 eprintln!("[syncho] Bad message from host: {} — {:?}", e, line);
+                line.clear();
                 continue;
             }
         };

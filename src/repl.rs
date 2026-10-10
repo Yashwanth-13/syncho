@@ -90,8 +90,9 @@ impl PlayNextHandler {
             },
 
             None => {
-                let writer = self.writer.as_mut().unwrap();
-                let _ = writer.lock().await.write_all(NetworkMessage::PlayNext(song).to_wire().as_bytes()).await;
+                let mut writer = self.writer.as_mut().unwrap().lock().await;
+                let _ = writer.write_all(NetworkMessage::PlayNext(song).to_wire().as_bytes()).await;
+                let _ = writer.flush().await;
             }
         }
         Ok(CommandStatus::Done)
@@ -132,8 +133,9 @@ impl QueueHandler {
             },
 
             None => {
-                let writer = self.writer.as_mut().unwrap();
-                let _ = writer.lock().await.write_all(NetworkMessage::GetQueue.to_wire().as_bytes()).await;
+                let mut writer = self.writer.as_mut().unwrap().lock().await;
+                let _ = writer.write_all(NetworkMessage::GetQueue.to_wire().as_bytes()).await;
+                let _ = writer.flush().await;
             }
         }
         Ok(CommandStatus::Done)

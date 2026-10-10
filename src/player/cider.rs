@@ -135,8 +135,14 @@ impl CiderControl {
     }
 
     pub async fn get_current_song(&self) -> Option<Song> {
-        if let Some(track)  = self.cider.now_playing().await.unwrap() {
-            Some(Song{song_name: track.name.clone(), artist_name: track.artist_name.clone(), album_name: track.album_name.clone(), position: track.current_position_ms()})
+        if let Ok(track)  = self.cider.now_playing().await {
+            match track {
+                Some(track) => {
+                    Some(Song{song_name: track.name.clone(), artist_name: track.artist_name.clone(), album_name: track.album_name.clone(), position: track.current_position_ms()})
+                }
+
+                _ => None
+            }
         } else {
             None
         }

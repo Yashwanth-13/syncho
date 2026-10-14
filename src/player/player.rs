@@ -9,11 +9,11 @@ fn format_song(song: &Song) -> String {
     formatted_song.push_str(&song.song_name);
 
     if !song.artist_name.is_empty() {
-        formatted_song.push_str(&format!(" by {}", &song.artist_name).to_string());
+        formatted_song.push_str(&format!(" by {}", song.artist_name).to_string());
     }
 
     if !song.album_name.is_empty() {
-        formatted_song.push_str(&format!(" from {}", &song.album_name));
+        formatted_song.push_str(&format!(" from {}", song.album_name));
     }
 
     formatted_song

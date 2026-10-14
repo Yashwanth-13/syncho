@@ -159,7 +159,7 @@ pub async fn looper(code: String, play_state: Arc<Mutex<PlayState>>, broadcaster
             "Print the code",
             vec![],
             Box::new(CodeHandler {
-                code: code,
+                code,
             })
         ))
         .add("pn", Command::new(

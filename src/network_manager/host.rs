@@ -40,7 +40,7 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster, target_player: Str
                 // println!("Track changed - Player: {:?}", &player_name);
                 if is_same_player(&target_player, &player_name) {
                     let song = make_song(track);
-                    println!("Song changed to - {} by {} from {}", song.song_name, song.artist_name, &song.album_name);
+                    println!("Song changed to - {} by {} from {}", song.song_name, song.artist_name, song.album_name);
                     
                     broadcaster.broadcast(NetworkMessage::Play(song.clone()));
                 } 
@@ -59,10 +59,9 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster, target_player: Str
                 }
             },
 
-            MediaEvent::PositionChanged { player_name, position } => {
-                if is_same_player(&target_player, &player_name) {
-                    broadcaster.broadcast(NetworkMessage::Seek{position: position.as_millis().to_string()});
-                } 
+            MediaEvent::PositionChanged { player_name, position }
+                if is_same_player(&target_player, &player_name) => {
+                    broadcaster.broadcast(NetworkMessage::Seek{position: position.as_millis().to_string()}); 
             },
 
             _ => {}
@@ -80,7 +79,7 @@ async fn accept_loop(
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
-                println!("[syncho] Client connecting from {}", &addr);
+                println!("[syncho] Client connecting from {}", addr);
                 let rx = tx.subscribe();
                 tokio::spawn(handle_client(stream, addr, Arc::clone(&play_state), Arc::clone(&session_code), rx));
             }
@@ -121,12 +120,12 @@ async fn handle_client(
 
     if !authed {
         let _ = send(&writer, NetworkMessage::AuthFail).await;
-        println!("[syncho] Client failed authentication. - {}", &client_addr);
+        println!("[syncho] Client failed authentication. - {}", client_addr);
         return;
     }
 
     let _ = send(&writer, NetworkMessage::AuthOk).await;
-    println!("[syncho] Client authenticated successfully. - {}", &client_addr);
+    println!("[syncho] Client authenticated successfully. - {}", client_addr);
 
     let curr_song = {
         play_state.lock().await.get_current_song().await
@@ -147,12 +146,8 @@ async fn handle_client(
         match rx.recv().await {
             Ok(msg) => {
                 let res = send(&writer, msg).await;
-                match res {
-                    Err(e) => {
-                        println!("[syncho] Broadcast error - {e}");
-                    }
-
-                    _ => {}
+                if let Err(e) = res {
+                    println!("[syncho] Broadcast error - {e}");
                 }
             }
             Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -172,14 +167,11 @@ async fn read_client_stream(client_addr: SocketAddr, reader: Arc<Mutex<BufReader
             reader.lock().await.read_line(&mut line).await
         };
 
-        match read_bytes {
-            Ok(0) => {
-                println!("[syncho] Client disconnected - {}", &client_addr);
-                return;
-            }
-
-            _ => {}
+        if let Ok(0) = read_bytes {
+            println!("[syncho] Client disconnected - {}", client_addr);
+            return;
         }
+
         let msg: NetworkMessage = match serde_json::from_str(line.trim()) {
             Ok(m) => m,
             Err(e) => {

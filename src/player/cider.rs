@@ -70,11 +70,12 @@ impl CiderControl {
             Some(idx) => lower[..idx].trim().to_string(),
             None => lower,
         };
-        let dash_stripped = match paren_stripped.find(" - ") {
+        
+        match paren_stripped.find(" - ") {
             Some(idx) => paren_stripped[..idx].trim().to_string(),
             None => paren_stripped,
-        };
-        dash_stripped
+        }
+    
     }
 
     fn score_candidate(
@@ -87,9 +88,7 @@ impl CiderControl {
         let min_artist_changes = normalized_levenshtein(&CiderControl::normalize(&candidate.artist_name), &CiderControl::normalize(target_artist));
         let min_album_changes = normalized_levenshtein(&CiderControl::normalize(&candidate.album_name), &CiderControl::normalize(target_album));
 
-        let score = min_song_changes * 0.4 + min_artist_changes * 0.45 + min_album_changes * 0.15;
-        score
-
+        min_song_changes * 0.4 + min_artist_changes * 0.45 + min_album_changes * 0.15
     }
 
     fn find_best_match(
@@ -128,8 +127,8 @@ impl CiderControl {
                     }
                     println!("Error. Retrying again after: {}s", back_off);
                     sleep(Duration::from_secs_f64(back_off));
-                    back_off = back_off * 1.5;
-                    count = count + 1;
+                    back_off *= 1.5;
+                    count += 1;
                 }
             }
         }

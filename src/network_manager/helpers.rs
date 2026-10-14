@@ -7,7 +7,7 @@ use crate::player::player::PlayState;
 use std::sync::{Arc};
 use futures::lock::{Mutex};
 
-pub fn is_same_player(target_player: &String, current_player: &String) -> bool {
+pub fn is_same_player(target_player: &String, current_player: &str) -> bool {
     current_player.to_lowercase().contains(target_player)
 }
 
@@ -18,7 +18,7 @@ pub fn make_song(track: Track) -> Song {
         None => {"".to_string()}
     };
 
-    Song { song_name: track.title.clone(), artist_name: track.artist.first().cloned().unwrap_or_default(), album_name: album_name, position: 0 }
+    Song { song_name: track.title.clone(), artist_name: track.artist.first().cloned().unwrap_or_default(), album_name, position: 0 }
 }
 
 pub async fn send(writer: &Arc<Mutex<BufWriter<OwnedWriteHalf>>>, msg: NetworkMessage) -> std::io::Result<()> {
@@ -47,7 +47,7 @@ pub async fn process_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>
             match song {
                 Some(host_song) => {
                     ps.play(host_song.clone()).await;
-                    ps.seek(host_song.position.try_into().unwrap()).await;
+                    ps.seek(host_song.position).await;
                 }
                 _ => {
                     println!("[syncho] Host is playing nothing right now");
@@ -74,10 +74,8 @@ pub async fn process_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>
         }
 
         NetworkMessage::Queue { queue } => {
-            let mut index = 1;
-            for song in queue {
+            for (index, song) in (1..).zip(queue.into_iter()) {
                 println!("{index} - {song}");
-                index += 1;
             }
         }
 

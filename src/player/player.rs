@@ -138,16 +138,14 @@ impl PlayState {
     }
 
     // gets the player's queue
-    pub async fn get_queue(&self) -> Vec<String> {
-        match &self.player {
+    pub async fn get_queue(&mut self) -> Vec<String> {
+        match &mut self.player {
             Player::Cider(client) => {
                 client.get_queue().await
             },
 
-            // TODO
             Player::Spotify(client) => {
-                Vec::new()
-
+                client.get_queue().await
             }
         }
     }

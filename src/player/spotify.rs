@@ -557,6 +557,57 @@ async fn search_track(
         Ok(())
     }
 
+    pub async fn get_queue(&mut self) -> Vec<String> {
+        let resp = self
+            .client
+            .get("https://api.spotify.com/v1/me/player/queue")
+            .bearer_auth(&self.access_token)
+            .send()
+            .await;
+
+        let resp = match resp {
+            Ok(r) => r,
+            Err(_) => return Vec::new(),
+        };
+
+        let status = resp.status();
+        let body: Value = resp.json().await.unwrap_or(Value::Null);
+
+        if Self::is_expired_token_error(status, &body) {
+            if self.refresh_access_token().await.is_ok() {
+                return Box::pin(self.get_queue()).await;
+            }
+            return Vec::new();
+        }
+
+        if !status.is_success() {
+            return Vec::new();
+        }
+
+        let mut songs = Vec::new();
+
+        if let Some(queue) = body.get("queue").and_then(|v| v.as_array()) {
+            for item in queue {
+                let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+                let artist = item
+                    .get("artists")
+                    .and_then(|v| v.get(0))
+                    .and_then(|v| v.get("name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
+                let album = item
+                    .get("album")
+                    .and_then(|v| v.get("name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
+
+                songs.push(format!("{} by {} from {}", name, artist, album));
+            }
+        }
+
+        songs
+    }
+
     pub async fn add_to_queue(&mut self, song: &Song) -> Result<()> {
         let (track_id, _album_uri) = self.search_track(&song.song_name,&song.album_name, &song.artist_name).await?;
         let uri = format!("spotify:track:{}", track_id);

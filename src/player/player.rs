@@ -4,6 +4,21 @@ use super::spotify::SpotifyPlayer;
 use super::super::network_manager::helpers::is_same_player;
 use nowhear::{MediaSourceBuilder, MediaSource};
 
+fn format_song(song: &Song) -> String {
+    let mut formatted_song = String::new();
+    formatted_song.push_str(&song.song_name);
+
+    if !song.artist_name.is_empty() {
+        formatted_song.push_str(&format!(" by {}", &song.artist_name).to_string());
+    }
+
+    if !song.album_name.is_empty() {
+        formatted_song.push_str(&format!(" from {}", &song.album_name));
+    }
+
+    formatted_song
+}
+
 impl PlayState {
 
     // PlayState constructor
@@ -111,11 +126,13 @@ impl PlayState {
     
     // Plays the given song
     pub async fn play(&mut self, song: Song) {
+        let formatted_song = format_song(&song);
         if !self.can_call_player().await { 
-            println!("[syncho] Your player is not running. Cannot play - {}", &song.song_name);
+            println!("[syncho] Your player is not running. Cannot play - {formatted_song}");
             return;
         };
 
+        println!("[syncho] Playing - {formatted_song}");
         match &mut self.player {
             Player::Cider(client) => {
                 if let Err(err) = client.play(&song).await {
@@ -134,7 +151,7 @@ impl PlayState {
     //Adds the song at the end of the queue(laaaaaaaaaaaast)
     pub async fn play_later(&mut self, song: Song) {
         if !self.can_call_player().await { 
-            println!("[syncho] Your player is not running. Cannot add - {}", &song.song_name);
+            println!("[syncho] Your player is not running. Cannot add - {} by {} from {}", &song.song_name, &song.artist_name, &song.album_name);
             return;
         };
 
@@ -158,6 +175,7 @@ impl PlayState {
             return;
         };
 
+        println!("[syncho] Play/Pause");
         match &mut self.player {
             Player::Cider(client) => {
                 let _ = client.play_pause().await;
@@ -173,11 +191,13 @@ impl PlayState {
     
     //Adds a song to play right after the current one
     pub async fn play_next(&mut self, song: Song) {
+        let formatted_song = format_song(&song);
         if !self.can_call_player().await { 
-            println!("[syncho] Your player is not running. Cannot add - {}", &song.song_name);
+            println!("[syncho] Your player is not running. Cannot add - {formatted_song}");
             return;
         };
 
+        println!("Playing next - {formatted_song}");
         match &mut self.player {
             Player::Cider(client) => {
                 let _ = client.play_next(&song).await;

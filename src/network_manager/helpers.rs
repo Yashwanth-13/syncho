@@ -48,7 +48,6 @@ pub async fn process_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>
                 Some(host_song) => {
                     ps.play(host_song.clone()).await;
                     ps.seek(host_song.position.try_into().unwrap()).await;
-                    println!("[syncho] playing Host's current song: {} - {}", host_song.song_name, host_song.artist_name);
                 }
                 _ => {
                     println!("[syncho] Host is playing nothing right now");
@@ -57,7 +56,6 @@ pub async fn process_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>
         }
 
         NetworkMessage::Play(song) => {
-            println!("[syncho] Playing: {} — {}", song.song_name, song.artist_name);
             ps.play(song).await;
         }
 
@@ -72,7 +70,6 @@ pub async fn process_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>
         }
 
         NetworkMessage::PlayNext(song)=> {
-            println!("[syncho] + Play next: {}", song.song_name);
             ps.play_next(song).await;
         }
 

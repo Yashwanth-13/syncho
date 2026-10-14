@@ -427,76 +427,76 @@ impl SpotifyPlayer {
     }
 
     
-async fn search_track(
-    &mut self,
-    track: &str,
-    album: &str,
-    artist: &str,
-) -> Result<(String, String)> {
-    let clean_track = clean_track_name(track);
-    let safe_track = clean_track.replace('"', "");
-    let safe_raw_track = track.trim().replace('"', "");
-    let safe_album = album.trim().replace('"', "");
+    async fn search_track(
+        &mut self,
+        track: &str,
+        album: &str,
+        artist: &str,
+    ) -> Result<(String, String)> {
+        let clean_track = clean_track_name(track);
+        let safe_track = clean_track.replace('"', "");
+        let safe_raw_track = track.trim().replace('"', "");
+        let safe_album = album.trim().replace('"', "");
 
-    let primary_artist = artist
-        .split(&[',', '&'][..])
-        .next()
-        .unwrap_or(artist)
-        .trim()
-        .replace('"', "");
+        let primary_artist = artist
+            .split(&[',', '&'][..])
+            .next()
+            .unwrap_or(artist)
+            .trim()
+            .replace('"', "");
 
-    let mut candidates = Vec::new();
+        let mut candidates = Vec::new();
 
-    // 1. Track + Artist + Album
-    if !safe_track.is_empty()
-        && !primary_artist.is_empty()
-        && !safe_album.is_empty()
-    {
-        candidates.push(format!(
-            "track:\"{}\" artist:\"{}\" album:\"{}\"",
-            safe_track, primary_artist, safe_album
-        ));
-    }
-
-    // 2. Track + Artist
-    if !safe_track.is_empty() && !primary_artist.is_empty() {
-        candidates.push(format!(
-            "track:\"{}\" artist:\"{}\"",
-            safe_track, primary_artist
-        ));
-    }
-
-    // 3. Track name only (cleaned)
-    if !safe_track.is_empty() {
-        candidates.push(format!("track:\"{}\"", safe_track));
-        candidates.push(safe_track.clone());
-    }
-
-    // 4. Raw track name + Artist
-    if safe_raw_track != safe_track && !primary_artist.is_empty() {
-        candidates.push(format!("{} {}", safe_raw_track, primary_artist));
-    }
-
-    // 5. Raw track name only
-    if safe_raw_track != safe_track && !safe_raw_track.is_empty() {
-        candidates.push(format!("track:\"{}\"", safe_raw_track));
-        candidates.push(safe_raw_track.clone());
-    }
-
-    // Execute candidates in priority order
-    for q in &candidates {
-        if let Some(res) = self.execute_search(q, &primary_artist).await? {
-            return Ok(res);
+        // 1. Track + Artist + Album
+        if !safe_track.is_empty()
+            && !primary_artist.is_empty()
+            && !safe_album.is_empty()
+        {
+            candidates.push(format!(
+                "track:\"{}\" artist:\"{}\" album:\"{}\"",
+                safe_track, primary_artist, safe_album
+            ));
         }
-    }
 
-    Err(anyhow!(
-        "track not found: {} by {} (tried: {:?})",
-        track,
-        artist,
-        candidates
-    ))
-}
+        // 2. Track + Artist
+        if !safe_track.is_empty() && !primary_artist.is_empty() {
+            candidates.push(format!(
+                "track:\"{}\" artist:\"{}\"",
+                safe_track, primary_artist
+            ));
+        }
+
+        // 3. Track name only (cleaned)
+        if !safe_track.is_empty() {
+            candidates.push(format!("track:\"{}\"", safe_track));
+            candidates.push(safe_track.clone());
+        }
+
+        // 4. Raw track name + Artist
+        if safe_raw_track != safe_track && !primary_artist.is_empty() {
+            candidates.push(format!("{} {}", safe_raw_track, primary_artist));
+        }
+
+        // 5. Raw track name only
+        if safe_raw_track != safe_track && !safe_raw_track.is_empty() {
+            candidates.push(format!("track:\"{}\"", safe_raw_track));
+            candidates.push(safe_raw_track.clone());
+        }
+
+        // Execute candidates in priority order
+        for q in &candidates {
+            if let Some(res) = self.execute_search(q, &primary_artist).await? {
+                return Ok(res);
+            }
+        }
+
+        Err(anyhow!(
+            "track not found: {} by {} (tried: {:?})",
+            track,
+            artist,
+            candidates
+        ))
+    }
 
     pub async fn play(&mut self, song: &Song) -> Result<()> {
         let (track_id, album_uri) = self.search_track(&song.song_name, &song.album_name, &song.artist_name).await?;

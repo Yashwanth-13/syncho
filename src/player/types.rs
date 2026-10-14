@@ -1,4 +1,5 @@
 use cider_api::{CiderClient};
+use nowhear::source::PlatformMediaSource;
 use serde::{self, Deserialize, Serialize};
 use super::spotify::SpotifyPlayer;
 
@@ -14,6 +15,7 @@ pub enum Player {
 
 pub struct PlayState {
     pub player: Player,
+    pub source: PlatformMediaSource
 }
 
 

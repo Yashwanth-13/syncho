@@ -26,7 +26,7 @@ struct Args {
 #[tokio::main]
 async fn main() {
     let config = Config::get_config();
-    let play_state: Arc<Mutex<PlayState>> = Arc::new(Mutex::new(PlayState::new(&config)));
+    let play_state: Arc<Mutex<PlayState>> = Arc::new(Mutex::new(PlayState::new(&config).await));
 
     let args = Args::parse();
     if args.host {

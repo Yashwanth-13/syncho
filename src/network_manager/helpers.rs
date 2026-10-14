@@ -5,7 +5,7 @@ use nowhear::{Track};
 use crate::player::types::Song;
 use crate::player::player::PlayState;
 use std::sync::{Arc};
-use futures::lock::{self, Mutex};
+use futures::lock::{Mutex};
 
 pub fn is_same_player(target_player: &String, current_player: &String) -> bool {
     current_player.to_lowercase().contains(target_player)

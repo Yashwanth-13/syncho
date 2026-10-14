@@ -1,10 +1,28 @@
 use super::types::*;
 pub use crate::player::types::PlayState;
 use super::spotify::SpotifyPlayer;
+use super::super::network_manager::helpers::is_same_player;
+use nowhear::{MediaSourceBuilder, MediaSource};
+
+fn format_song(song: &Song) -> String {
+    let mut formatted_song = String::new();
+    formatted_song.push_str(&song.song_name);
+
+    if !song.artist_name.is_empty() {
+        formatted_song.push_str(&format!(" by {}", &song.artist_name).to_string());
+    }
+
+    if !song.album_name.is_empty() {
+        formatted_song.push_str(&format!(" from {}", &song.album_name));
+    }
+
+    formatted_song
+}
 
 impl PlayState {
 
-    pub fn new(config: &Config) -> PlayState {
+    // PlayState constructor
+    pub async fn new(config: &Config) -> Self {
         let player = match config {
             Config::Cider { token } => {
                 Player::Cider(CiderControl::new(token))
@@ -19,9 +37,10 @@ impl PlayState {
                 ))
             }
         };
+        let source = MediaSourceBuilder::new().build().await.unwrap();
 
         PlayState {
-            player,
+            player, source
         }
     }
 
@@ -32,7 +51,33 @@ impl PlayState {
         }
     }
 
+    fn is_running(target_player: String, players: Vec<String>) -> bool {
+        for player in players {
+            if is_same_player(&target_player, &player){
+                return true
+            }
+        }
+
+        false
+    }
+
+    async fn can_call_player(&self) -> bool {
+        let results = self.source.list_players().await;
+        let players = match results {
+            Ok(plr) => plr,
+            _ => return false
+        };
+        let target_player_str = self.get_player_str();
+
+        PlayState::is_running(target_player_str, players)
+    }
+
     pub async fn get_current_song(&mut self) -> Option<Song> {
+        if !self.can_call_player().await { 
+            println!("[syncho] Your player is not running.");
+            return None;
+        };
+
         match &mut self.player {
             Player::Cider(client) => {
                 client.get_current_song().await
@@ -59,7 +104,13 @@ impl PlayState {
         }
     }
 
+    // Song seek
     pub async fn seek(&mut self, new_position: u64) {
+        if !self.can_call_player().await { 
+            println!("[syncho] Your player is not running. Cannot seek");
+            return;
+        };
+
         match &mut self.player {
             Player::Cider(client) => {
                 client.seek(new_position.try_into().unwrap()).await;
@@ -72,9 +123,16 @@ impl PlayState {
             }
         }
     }
-
     
+    // Plays the given song
     pub async fn play(&mut self, song: Song) {
+        let formatted_song = format_song(&song);
+        if !self.can_call_player().await { 
+            println!("[syncho] Your player is not running. Cannot play - {formatted_song}");
+            return;
+        };
+
+        println!("[syncho] Playing - {formatted_song}");
         match &mut self.player {
             Player::Cider(client) => {
                 if let Err(err) = client.play(&song).await {
@@ -90,9 +148,13 @@ impl PlayState {
         }
     }
 
-
-    //addes the song at the end of the queue(laaaaaaaaaaaast)
+    //Adds the song at the end of the queue(laaaaaaaaaaaast)
     pub async fn play_later(&mut self, song: Song) {
+        if !self.can_call_player().await { 
+            println!("[syncho] Your player is not running. Cannot add - {} by {} from {}", &song.song_name, &song.artist_name, &song.album_name);
+            return;
+        };
+
         match &mut self.player {
             Player::Cider(client) => {
                 let _ = client.play_later(&song).await;
@@ -108,6 +170,12 @@ impl PlayState {
     }
 
     pub async fn play_pause(&mut self) {
+        if !self.can_call_player().await { 
+            println!("[syncho] Your player is not running.");
+            return;
+        };
+
+        println!("[syncho] Play/Pause");
         match &mut self.player {
             Player::Cider(client) => {
                 let _ = client.play_pause().await;
@@ -121,8 +189,15 @@ impl PlayState {
         }
     }
     
-    //addes the song to queue(this is the song that plays immediately after the present one)
+    //Adds a song to play right after the current one
     pub async fn play_next(&mut self, song: Song) {
+        let formatted_song = format_song(&song);
+        if !self.can_call_player().await { 
+            println!("[syncho] Your player is not running. Cannot add - {formatted_song}");
+            return;
+        };
+
+        println!("Playing next - {formatted_song}");
         match &mut self.player {
             Player::Cider(client) => {
                 let _ = client.play_next(&song).await;
@@ -137,8 +212,13 @@ impl PlayState {
         }
     }
 
-    // gets the player's queue
+    // Gets the player's queue
     pub async fn get_queue(&mut self) -> Vec<String> {
+        if !self.can_call_player().await { 
+            println!("[syncho] Your player is not running. Cannot fetch queue");
+            return Vec::new()
+        }
+
         match &mut self.player {
             Player::Cider(client) => {
                 client.get_queue().await

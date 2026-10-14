@@ -22,10 +22,6 @@ jobs:
             artifact_name: syncho.exe
             asset_name: syncho-windows-x86_64.exe
 
-          - os: macos-latest
-            artifact_name: syncho
-            asset_name: syncho-macos-aarch64
-
     steps:
       - uses: actions/checkout@v4
 

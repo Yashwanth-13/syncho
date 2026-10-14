@@ -85,7 +85,7 @@ impl PlayNextHandler {
         let song = get_song();
         match self.broadcaster.as_mut() {
             
-            Some(bc) => {
+            Some(_bc) => {
                 self.play_state.lock().await.play_next(song).await;
             },
 
@@ -121,7 +121,7 @@ impl QueueHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         match self.broadcaster.as_mut() {
             
-            Some(bc) => {
+            Some(_bc) => {
                 let play_state = Arc::clone(&self.play_state);
                 let queue = play_state.lock().await.get_queue().await;
 

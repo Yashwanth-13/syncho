@@ -33,20 +33,21 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster, target_player: Str
     let source = MediaSourceBuilder::new().build().await.unwrap();
     let mut stream = source.event_stream().await.unwrap();
     
+    // Do something only when the state change is from our player
     while let Some(event) = stream.next().await {
         match event {
             MediaEvent::TrackChanged { player_name, track} => {
-                println!("Track changed - Player: {:?}", &player_name);
+                // println!("Track changed - Player: {:?}", &player_name);
                 if is_same_player(&target_player, &player_name) {
                     let song = make_song(track);
-                    println!("Song changed to: {} {} {}", song.song_name, song.artist_name, &song.album_name);
+                    println!("Song changed to - {} by {} from {}", song.song_name, song.artist_name, &song.album_name);
                     
                     broadcaster.broadcast(NetworkMessage::Play(song.clone()));
-                } // Do something only when the state change is from our player
+                } 
             },
 
             MediaEvent::StateChanged { player_name, state } => {
-                println!("State changed - Player: {:?}", &player_name);
+                // println!("State changed - Player: {:?}", &player_name);
                 if is_same_player(&target_player, &player_name) {
                     match state {
                         PlaybackState::Stopped => {broadcaster.broadcast(NetworkMessage::Message{msg: "Host has no media loaded. Standing by..".to_string()})},
@@ -55,13 +56,13 @@ pub async fn listen_to_playback(broadcaster: HostBroadcaster, target_player: Str
                             println!("Play/Pause");
                         }
                     }
-                } // Do something only when the state change is from our player
+                }
             },
 
             MediaEvent::PositionChanged { player_name, position } => {
                 if is_same_player(&target_player, &player_name) {
                     broadcaster.broadcast(NetworkMessage::Seek{position: position.as_millis().to_string()});
-                } // Do something only when the state change is from our player
+                } 
             },
 
             _ => {}

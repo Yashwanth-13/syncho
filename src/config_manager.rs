@@ -1,13 +1,11 @@
-use dialoguer::{Select};
-use std::{env, fs, io::{BufWriter}};
-use std::{self, path::Path, fs::File};
-
+use dialoguer::Select;
+use std::{self, fs::File, path::Path};
+use std::{env, fs, io::BufWriter};
 
 use crate::helpers::*;
 use crate::player::types::Config;
 
 impl Config {
-
     fn create_config(path: &Path) -> Config {
         println!("\nNo previous config found. Creating new config\n");
 
@@ -26,11 +24,18 @@ impl Config {
             }
 
             "Spotify" => {
-                let refresh_token = get_input(&"Enter your Spotify refresh token".to_string(), false);
+                let refresh_token =
+                    get_input(&"Enter your Spotify refresh token".to_string(), false);
                 let client_id = get_input(&"Enter your Spotify client ID".to_string(), false);
-                let client_secret = get_input(&"Enter your Spotify client secret".to_string(), false);
+                let client_secret =
+                    get_input(&"Enter your Spotify client secret".to_string(), false);
                 let access_token = get_input(&"Enter your Spotify access token".to_string(), false);
-                Config::Spotify { refresh_token, client_id, client_secret, access_token }
+                Config::Spotify {
+                    refresh_token,
+                    client_id,
+                    client_secret,
+                    access_token,
+                }
             }
 
             _ => unreachable!(),

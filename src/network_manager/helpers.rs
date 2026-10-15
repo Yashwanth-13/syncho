@@ -1,11 +1,11 @@
-use tokio::io::{AsyncWriteExt,BufWriter};
-use tokio::net::tcp::{OwnedWriteHalf};
 use super::types::*;
-use nowhear::{Track};
-use crate::player::types::Song;
 use crate::player::player::PlayState;
-use std::sync::{Arc};
-use futures::lock::{Mutex};
+use crate::player::types::Song;
+use futures::lock::Mutex;
+use nowhear::Track;
+use std::sync::Arc;
+use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::net::tcp::OwnedWriteHalf;
 
 pub fn is_same_player(target_player: &String, current_player: &str) -> bool {
     current_player.to_lowercase().contains(target_player)
@@ -14,14 +14,22 @@ pub fn is_same_player(target_player: &String, current_player: &str) -> bool {
 pub fn make_song(track: Track) -> Song {
     let album = track.album;
     let album_name = match album {
-        Some(name) => {name}
-        None => {"".to_string()}
+        Some(name) => name,
+        None => "".to_string(),
     };
 
-    Song { song_name: track.title.clone(), artist_name: track.artist.first().cloned().unwrap_or_default(), album_name, position: 0 }
+    Song {
+        song_name: track.title.clone(),
+        artist_name: track.artist.first().cloned().unwrap_or_default(),
+        album_name,
+        position: 0,
+    }
 }
 
-pub async fn send(writer: &Arc<Mutex<BufWriter<OwnedWriteHalf>>>, msg: NetworkMessage) -> std::io::Result<()> {
+pub async fn send(
+    writer: &Arc<Mutex<BufWriter<OwnedWriteHalf>>>,
+    msg: NetworkMessage,
+) -> std::io::Result<()> {
     let mut locked_wr = writer.lock().await;
 
     locked_wr.write_all(msg.to_wire().as_bytes()).await?;
@@ -29,20 +37,24 @@ pub async fn send(writer: &Arc<Mutex<BufWriter<OwnedWriteHalf>>>, msg: NetworkMe
 }
 
 /// Process the receieved event
-pub async fn process_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>>, writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>) {
+pub async fn process_event(
+    msg: NetworkMessage,
+    play_state: Arc<Mutex<PlayState>>,
+    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>,
+) {
     let mut ps = play_state.lock().await;
 
     match msg {
-        NetworkMessage::Message{msg} => {
+        NetworkMessage::Message { msg } => {
             println!("[syncho] {}", msg)
         }
 
-        NetworkMessage::Seek{position} => {
+        NetworkMessage::Seek { position } => {
             let pos: u64 = position.parse().unwrap();
             ps.seek(pos).await;
         }
 
-        NetworkMessage::CurrentState{song} => {
+        NetworkMessage::CurrentState { song } => {
             println!("curr song - {:?}", song);
             match song {
                 Some(host_song) => {
@@ -69,7 +81,7 @@ pub async fn process_event(msg: NetworkMessage, play_state: Arc<Mutex<PlayState>
             let _ = send(&writer.unwrap(), NetworkMessage::Queue { queue }).await;
         }
 
-        NetworkMessage::PlayNext(song)=> {
+        NetworkMessage::PlayNext(song) => {
             ps.play_next(song).await;
         }
 

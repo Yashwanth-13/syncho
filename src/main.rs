@@ -1,17 +1,22 @@
-mod network_manager;
 mod config_manager;
 mod helpers;
+mod network_manager;
 mod player;
 mod repl;
 
 use crate::{
-    helpers::{generate_numeric_code, get_input}, network_manager::{client::join_session, host::{listen_to_playback, start_host}}, player::types::{Config, PlayState},
+    helpers::{generate_numeric_code, get_input},
+    network_manager::{
+        client::join_session,
+        host::{listen_to_playback, start_host},
+    },
+    player::types::{Config, PlayState},
 };
 
-use futures::lock::Mutex;
-use std::sync::{Arc};
-use tokio::{net::TcpListener};
 use clap::Parser;
+use futures::lock::Mutex;
+use std::sync::Arc;
+use tokio::net::TcpListener;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -41,22 +46,21 @@ async fn main() {
 
         tokio::spawn(listen_to_playback(broadcaster.clone(), curr_player.clone())); // Listen to playback changes
         repl::looper(code.to_string(), play_state, Some(broadcaster), None).await;
-
     } else if args.join {
         let host_addr = format!("{}:8080", get_input(&"Host IP".to_string(), false));
         // let host_addr = "127.0.0.1:8080";
         let code = get_input(&"Session Code".to_string(), false);
-        
+
         let result = join_session(&host_addr, &code, play_state.clone()).await;
 
         match result {
             Ok(writer) => {
                 repl::looper(code.to_string(), play_state, None, Some(writer)).await;
-            },
+            }
 
-            Err(_) => {eprintln!("[syncho] Failed to connect to host")}
+            Err(_) => {
+                eprintln!("[syncho] Failed to connect to host")
+            }
         };
-        
     }
 }
-

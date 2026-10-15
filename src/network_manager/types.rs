@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast};
 use crate::player::types::Song;
+use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -8,15 +8,15 @@ pub enum NetworkMessage {
     Auth { code: String },
     AuthOk,
     AuthFail,
-    Message{msg: String},
-    Seek{position: String},
-    CurrentState{song: Option<Song>},
+    Message { msg: String },
+    Seek { position: String },
+    CurrentState { song: Option<Song> },
     Play(Song),
     PlayPause,
     // PlayLater(Song),
     PlayNext(Song),
     GetQueue,
-    Queue{queue: Vec<String>}
+    Queue { queue: Vec<String> },
 }
 
 impl NetworkMessage {
@@ -26,7 +26,6 @@ impl NetworkMessage {
         s
     }
 }
-
 
 #[derive(Clone)]
 pub struct HostBroadcaster {

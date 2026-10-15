@@ -1,17 +1,16 @@
 use super::types::*;
 use futures::StreamExt;
 use futures::lock::Mutex;
+use std::net::SocketAddr;
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader, BufWriter};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{broadcast};
-use std::net::SocketAddr;
-use std::sync::{Arc};
+use tokio::sync::broadcast;
 
 use crate::network_manager::helpers::{is_same_player, make_song, process_event, send};
-use crate::player::types::{PlayState};
+use crate::player::types::PlayState;
 use nowhear::{MediaEvent, MediaSource, MediaSourceBuilder, PlaybackState};
-
 
 /// Returns a [`HostBroadcaster`] you can call from the REPL to push events.
 pub async fn start_host(
@@ -24,7 +23,7 @@ pub async fn start_host(
     let broadcaster = HostBroadcaster { tx: tx.clone() };
 
     tokio::spawn(accept_loop(listener, play_state, session_code, tx));
-    
+
     broadcaster
 }
 
@@ -32,37 +31,46 @@ pub async fn start_host(
 pub async fn listen_to_playback(broadcaster: HostBroadcaster, target_player: String) {
     let source = MediaSourceBuilder::new().build().await.unwrap();
     let mut stream = source.event_stream().await.unwrap();
-    
+
     // Do something only when the state change is from our player
     while let Some(event) = stream.next().await {
         match event {
-            MediaEvent::TrackChanged { player_name, track} => {
+            MediaEvent::TrackChanged { player_name, track } => {
                 // println!("Track changed - Player: {:?}", &player_name);
                 if is_same_player(&target_player, &player_name) {
                     let song = make_song(track);
-                    println!("Song changed to - {} by {} from {}", song.song_name, song.artist_name, song.album_name);
-                    
+                    println!(
+                        "Song changed to - {} by {} from {}",
+                        song.song_name, song.artist_name, song.album_name
+                    );
+
                     broadcaster.broadcast(NetworkMessage::Play(song.clone()));
-                } 
-            },
+                }
+            }
 
             MediaEvent::StateChanged { player_name, state } => {
                 // println!("State changed - Player: {:?}", &player_name);
                 if is_same_player(&target_player, &player_name) {
                     match state {
-                        PlaybackState::Stopped => {broadcaster.broadcast(NetworkMessage::Message{msg: "Host has no media loaded. Standing by..".to_string()})},
+                        PlaybackState::Stopped => broadcaster.broadcast(NetworkMessage::Message {
+                            msg: "Host has no media loaded. Standing by..".to_string(),
+                        }),
                         _ => {
                             broadcaster.broadcast(NetworkMessage::PlayPause);
                             println!("Play/Pause");
                         }
                     }
                 }
-            },
+            }
 
-            MediaEvent::PositionChanged { player_name, position }
-                if is_same_player(&target_player, &player_name) => {
-                    broadcaster.broadcast(NetworkMessage::Seek{position: position.as_millis().to_string()}); 
-            },
+            MediaEvent::PositionChanged {
+                player_name,
+                position,
+            } if is_same_player(&target_player, &player_name) => {
+                broadcaster.broadcast(NetworkMessage::Seek {
+                    position: position.as_millis().to_string(),
+                });
+            }
 
             _ => {}
         }
@@ -81,7 +89,13 @@ async fn accept_loop(
             Ok((stream, addr)) => {
                 println!("[syncho] Client connecting from {}", addr);
                 let rx = tx.subscribe();
-                tokio::spawn(handle_client(stream, addr, Arc::clone(&play_state), Arc::clone(&session_code), rx));
+                tokio::spawn(handle_client(
+                    stream,
+                    addr,
+                    Arc::clone(&play_state),
+                    Arc::clone(&session_code),
+                    rx,
+                ));
             }
             Err(e) => {
                 eprintln!("[syncho] Accept error: {}", e);
@@ -89,7 +103,6 @@ async fn accept_loop(
         }
     }
 }
-
 
 async fn handle_client(
     stream: TcpStream,
@@ -100,21 +113,18 @@ async fn handle_client(
 ) {
     let (read_half, write_half) = stream.into_split();
     let reader = Arc::new(Mutex::new(BufReader::new(read_half)));
-    let writer: Arc<Mutex<BufWriter<OwnedWriteHalf>>> = Arc::new(Mutex::new(BufWriter::new(write_half)));
+    let writer: Arc<Mutex<BufWriter<OwnedWriteHalf>>> =
+        Arc::new(Mutex::new(BufWriter::new(write_half)));
     let mut line = String::new();
-    
-    let res = {
-        reader.lock().await.read_line(&mut line).await.unwrap_or(0)
-    }; 
-    
+
+    let res = { reader.lock().await.read_line(&mut line).await.unwrap_or(0) };
+
     if res == 0 {
         return;
     }
 
     let authed = match serde_json::from_str::<NetworkMessage>(line.trim()) {
-        Ok(NetworkMessage::Auth { code }) => {
-            code == *session_code
-        },
+        Ok(NetworkMessage::Auth { code }) => code == *session_code,
         _ => false,
     };
 
@@ -125,21 +135,27 @@ async fn handle_client(
     }
 
     let _ = send(&writer, NetworkMessage::AuthOk).await;
-    println!("[syncho] Client authenticated successfully. - {}", client_addr);
+    println!(
+        "[syncho] Client authenticated successfully. - {}",
+        client_addr
+    );
 
-    let curr_song = {
-        play_state.lock().await.get_current_song().await
-    };
+    let curr_song = { play_state.lock().await.get_current_song().await };
 
     let message = match curr_song {
-        Some(song) => NetworkMessage::CurrentState{song: Some(song)},
-        None => NetworkMessage::CurrentState{song: None}
+        Some(song) => NetworkMessage::CurrentState { song: Some(song) },
+        None => NetworkMessage::CurrentState { song: None },
     };
 
     let _ = send(&writer, message).await;
 
     // Client message listener
-    tokio::spawn(read_client_stream(client_addr, Arc::clone(&reader), Arc::clone(&writer), play_state));
+    tokio::spawn(read_client_stream(
+        client_addr,
+        Arc::clone(&reader),
+        Arc::clone(&writer),
+        play_state,
+    ));
 
     // Forward broadcast messages
     loop {
@@ -159,13 +175,16 @@ async fn handle_client(
 }
 
 // Listen to messages from clients
-async fn read_client_stream(client_addr: SocketAddr, reader: Arc<Mutex<BufReader<OwnedReadHalf>>>, writer: Arc<Mutex<BufWriter<OwnedWriteHalf>>>, play_state: Arc<Mutex<PlayState>>) {
+async fn read_client_stream(
+    client_addr: SocketAddr,
+    reader: Arc<Mutex<BufReader<OwnedReadHalf>>>,
+    writer: Arc<Mutex<BufWriter<OwnedWriteHalf>>>,
+    play_state: Arc<Mutex<PlayState>>,
+) {
     let mut line = String::new();
     loop {
         line.clear();
-        let read_bytes = {
-            reader.lock().await.read_line(&mut line).await
-        };
+        let read_bytes = { reader.lock().await.read_line(&mut line).await };
 
         if let Ok(0) = read_bytes {
             println!("[syncho] Client disconnected - {}", client_addr);
@@ -183,4 +202,3 @@ async fn read_client_stream(client_addr: SocketAddr, reader: Arc<Mutex<BufReader
         process_event(msg, Arc::clone(&play_state), Some(Arc::clone(&writer))).await;
     }
 }
-

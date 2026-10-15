@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Result};
-use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use anyhow::{Result, anyhow};
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -23,7 +23,9 @@ fn clean_track_name(name: &str) -> String {
     let mut cleaned = name.to_string();
 
     // 1. Strip parenthesized/bracketed features: (feat. ...), [feat. ...], (ft. ...), [with ...]
-    for pattern in &["(feat", "[feat", "(ft.", "[ft.", "(ft ", "[ft ", "(with", "[with"] {
+    for pattern in &[
+        "(feat", "[feat", "(ft.", "[ft.", "(ft ", "[ft ", "(with", "[with",
+    ] {
         while let Some(pos) = cleaned.to_lowercase().find(pattern) {
             if let Some(end_offset) = cleaned[pos..].find(|c| c == ')' || c == ']') {
                 cleaned.replace_range(pos..pos + end_offset + 1, "");
@@ -40,7 +42,10 @@ fn clean_track_name(name: &str) -> String {
         }
     }
 
-    cleaned.trim().trim_matches(&['-', '–', '—', ' '][..]).to_string()
+    cleaned
+        .trim()
+        .trim_matches(&['-', '–', '—', ' '][..])
+        .to_string()
 }
 
 impl SpotifyPlayer {
@@ -169,9 +174,14 @@ impl SpotifyPlayer {
         if let Some(devices) = devices {
             // If there's an already active device, use it directly
             if let Some(active) = devices.iter().find(|d| {
-                d.get("is_active").and_then(|v| v.as_bool()).unwrap_or(false)
+                d.get("is_active")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
             }) {
-                let id = active.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let id = active
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
                 return Ok(id);
             }
 
@@ -334,7 +344,10 @@ impl SpotifyPlayer {
             return Box::pin(self.play_pause()).await;
         }
 
-        let is_playing = body.get("is_playing").and_then(|v| v.as_bool()).unwrap_or(false);
+        let is_playing = body
+            .get("is_playing")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         let endpoint = if is_playing {
             "https://api.spotify.com/v1/me/player/pause"
@@ -367,8 +380,12 @@ impl SpotifyPlayer {
 
         Ok(())
     }
-    
-    async fn execute_search(&mut self, query: &str, expected_artist: &str) -> Result<Option<(String, String)>> {
+
+    async fn execute_search(
+        &mut self,
+        query: &str,
+        expected_artist: &str,
+    ) -> Result<Option<(String, String)>> {
         let resp = self
             .client
             .get("https://api.spotify.com/v1/search")
@@ -409,7 +426,10 @@ impl SpotifyPlayer {
                     artists.iter().any(|a| {
                         a.get("name")
                             .and_then(|n| n.as_str())
-                            .map(|name| name.to_lowercase().contains(&expected_lower) || expected_lower.contains(&name.to_lowercase()))
+                            .map(|name| {
+                                name.to_lowercase().contains(&expected_lower)
+                                    || expected_lower.contains(&name.to_lowercase())
+                            })
                             .unwrap_or(false)
                     })
                 })
@@ -417,7 +437,11 @@ impl SpotifyPlayer {
 
             if artists_match {
                 let track_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                let album_uri = item.get("album").and_then(|v| v.get("uri")).and_then(|v| v.as_str()).unwrap_or("");
+                let album_uri = item
+                    .get("album")
+                    .and_then(|v| v.get("uri"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 return Ok(Some((track_id.to_string(), album_uri.to_string())));
             }
         }
@@ -426,7 +450,6 @@ impl SpotifyPlayer {
         Ok(None)
     }
 
-    
     async fn search_track(
         &mut self,
         track: &str,
@@ -448,10 +471,7 @@ impl SpotifyPlayer {
         let mut candidates = Vec::new();
 
         // 1. Track + Artist + Album
-        if !safe_track.is_empty()
-            && !primary_artist.is_empty()
-            && !safe_album.is_empty()
-        {
+        if !safe_track.is_empty() && !primary_artist.is_empty() && !safe_album.is_empty() {
             candidates.push(format!(
                 "track:\"{}\" artist:\"{}\" album:\"{}\"",
                 safe_track, primary_artist, safe_album
@@ -499,7 +519,9 @@ impl SpotifyPlayer {
     }
 
     pub async fn play(&mut self, song: &Song) -> Result<()> {
-        let (track_id, album_uri) = self.search_track(&song.song_name, &song.album_name, &song.artist_name).await?;
+        let (track_id, album_uri) = self
+            .search_track(&song.song_name, &song.album_name, &song.artist_name)
+            .await?;
         let track_uri = format!("spotify:track:{}", track_id);
 
         let _device_id = self.get_active_device_id().await?;
@@ -529,7 +551,6 @@ impl SpotifyPlayer {
 
         Ok(())
     }
-
 
     pub async fn seek(&mut self, position_ms: u64) -> Result<()> {
         let resp = self
@@ -588,7 +609,10 @@ impl SpotifyPlayer {
 
         if let Some(queue) = body.get("queue").and_then(|v| v.as_array()) {
             for item in queue {
-                let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+                let name = item
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
                 let artist = item
                     .get("artists")
                     .and_then(|v| v.get(0))
@@ -609,7 +633,9 @@ impl SpotifyPlayer {
     }
 
     pub async fn add_to_queue(&mut self, song: &Song) -> Result<()> {
-        let (track_id, _album_uri) = self.search_track(&song.song_name,&song.album_name, &song.artist_name).await?;
+        let (track_id, _album_uri) = self
+            .search_track(&song.song_name, &song.album_name, &song.artist_name)
+            .await?;
         let uri = format!("spotify:track:{}", track_id);
 
         let _device_id = self.get_active_device_id().await?;

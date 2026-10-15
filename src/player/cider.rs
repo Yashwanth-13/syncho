@@ -1,11 +1,11 @@
+use cider_api::{CiderClient, CiderError};
 use std::{thread::sleep, time::Duration};
 use url::form_urlencoded;
-use cider_api::{CiderClient, CiderError};
 
-use serde::Deserialize;
-use strsim::{normalized_levenshtein};
-use unicode_normalization::UnicodeNormalization;
 use super::types::*;
+use serde::Deserialize;
+use strsim::normalized_levenshtein;
+use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Deserialize)]
 struct SearchResponse {
@@ -43,9 +43,10 @@ struct SongAttributes {
 }
 
 impl CiderControl {
-
     pub fn new(token: &String) -> CiderControl {
-        CiderControl { cider: CiderClient::new().with_token(token) }
+        CiderControl {
+            cider: CiderClient::new().with_token(token),
+        }
     }
 
     fn is_combining_mark(c: char) -> bool {
@@ -54,11 +55,12 @@ impl CiderControl {
     }
     fn normalize(s: &str) -> String {
         let deaccented: String = s
-        .nfd()
-        .filter(|c| !CiderControl::is_combining_mark(*c))
-        .collect();
+            .nfd()
+            .filter(|c| !CiderControl::is_combining_mark(*c))
+            .collect();
 
-        let lower = deaccented.to_lowercase()
+        let lower = deaccented
+            .to_lowercase()
             .chars()
             .filter(|c| c.is_alphanumeric() || c.is_whitespace())
             .collect::<String>()
@@ -70,12 +72,11 @@ impl CiderControl {
             Some(idx) => lower[..idx].trim().to_string(),
             None => lower,
         };
-        
+
         match paren_stripped.find(" - ") {
             Some(idx) => paren_stripped[..idx].trim().to_string(),
             None => paren_stripped,
         }
-    
     }
 
     fn score_candidate(
@@ -84,17 +85,23 @@ impl CiderControl {
         target_artist: &str,
         target_album: &str,
     ) -> f64 {
-        let min_song_changes = normalized_levenshtein(&CiderControl::normalize(&candidate.name), &CiderControl::normalize(target_song));
-        let min_artist_changes = normalized_levenshtein(&CiderControl::normalize(&candidate.artist_name), &CiderControl::normalize(target_artist));
-        let min_album_changes = normalized_levenshtein(&CiderControl::normalize(&candidate.album_name), &CiderControl::normalize(target_album));
+        let min_song_changes = normalized_levenshtein(
+            &CiderControl::normalize(&candidate.name),
+            &CiderControl::normalize(target_song),
+        );
+        let min_artist_changes = normalized_levenshtein(
+            &CiderControl::normalize(&candidate.artist_name),
+            &CiderControl::normalize(target_artist),
+        );
+        let min_album_changes = normalized_levenshtein(
+            &CiderControl::normalize(&candidate.album_name),
+            &CiderControl::normalize(target_album),
+        );
 
         min_song_changes * 0.4 + min_artist_changes * 0.45 + min_album_changes * 0.15
     }
 
-    fn find_best_match(
-        json_str: &str, 
-        song: &Song
-    ) -> Option<String> {
+    fn find_best_match(json_str: &str, song: &Song) -> Option<String> {
         let parsed: SearchResponse = serde_json::from_str(json_str).ok()?;
 
         parsed
@@ -103,13 +110,24 @@ impl CiderControl {
             .songs
             .data
             .iter()
-            .map(|entry| (entry, CiderControl::score_candidate(&entry.attributes, &song.song_name, &song.artist_name, &song.album_name)))
+            .map(|entry| {
+                (
+                    entry,
+                    CiderControl::score_candidate(
+                        &entry.attributes,
+                        &song.song_name,
+                        &song.artist_name,
+                        &song.album_name,
+                    ),
+                )
+            })
             .max_by(|(_, score_a), (_, score_b)| score_a.partial_cmp(score_b).unwrap())
             .map(|(entry, _)| entry.id.clone())
     }
 
-    async fn get_id(&self, song: &Song) -> Option<String>{
-        let encoded_song: String = form_urlencoded::byte_serialize(song.song_name.as_bytes()).collect();
+    async fn get_id(&self, song: &Song) -> Option<String> {
+        let encoded_song: String =
+            form_urlencoded::byte_serialize(song.song_name.as_bytes()).collect();
         let path = format!("/v1/catalog/in/search?types=songs&term={}", encoded_song);
 
         let mut back_off: f64 = 1.0;
@@ -119,7 +137,7 @@ impl CiderControl {
                 Ok(val) => {
                     let best_match = CiderControl::find_best_match(&val.to_string(), song);
                     return best_match;
-                },
+                }
                 Err(_) => {
                     if count > 5 {
                         println!("Max hit reached. Aborting request");
@@ -135,13 +153,16 @@ impl CiderControl {
     }
 
     pub async fn get_current_song(&self) -> Option<Song> {
-        if let Ok(track)  = self.cider.now_playing().await {
+        if let Ok(track) = self.cider.now_playing().await {
             match track {
-                Some(track) => {
-                    Some(Song{song_name: track.name.clone(), artist_name: track.artist_name.clone(), album_name: track.album_name.clone(), position: track.current_position_ms()})
-                }
+                Some(track) => Some(Song {
+                    song_name: track.name.clone(),
+                    artist_name: track.artist_name.clone(),
+                    album_name: track.album_name.clone(),
+                    position: track.current_position_ms(),
+                }),
 
-                _ => None
+                _ => None,
             }
         } else {
             None
@@ -158,7 +179,7 @@ impl CiderControl {
         self.cider.seek_ms(song.position).await
     }
 
-    pub async fn play_later(&self, song: &Song) ->  Result<(), CiderError> {
+    pub async fn play_later(&self, song: &Song) -> Result<(), CiderError> {
         let song_id = self.get_id(song).await.unwrap();
         self.cider.play_later("songs", &song_id).await
     }
@@ -174,13 +195,15 @@ impl CiderControl {
 
     pub async fn get_queue(&self) -> Vec<String> {
         let queue = self.cider.get_queue().await.unwrap();
-        let mut songs:Vec<String> = Vec::new();
+        let mut songs: Vec<String> = Vec::new();
         for i in queue {
             let attr = i.attributes.unwrap();
-            songs.push(format!("{} by {} from {}", attr.name, attr.artist_name, attr.album_name));
+            songs.push(format!(
+                "{} by {} from {}",
+                attr.name, attr.artist_name, attr.album_name
+            ));
         }
 
         songs
-        
     }
 }

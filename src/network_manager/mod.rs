@@ -1,4 +1,4 @@
-pub mod types;
 pub mod client;
-pub mod host;
 pub mod helpers;
+pub mod host;
+pub mod types;

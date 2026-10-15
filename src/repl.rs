@@ -1,14 +1,13 @@
-use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio::net::tcp::{OwnedWriteHalf};
+use futures::lock::Mutex;
+use mini_async_repl::{
+    CommandStatus, Repl, anyhow,
+    command::{Command, CommandArgInfo, ExecuteCommand},
+};
 use std::future::Future;
 use std::pin::Pin;
-use futures::lock::Mutex;
-use std::sync::{Arc};
-use mini_async_repl::{
-    command::{Command, CommandArgInfo, ExecuteCommand},
-    CommandStatus, Repl,
-    anyhow
-};
+use std::sync::Arc;
+use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::net::tcp::OwnedWriteHalf;
 
 use crate::helpers::get_input;
 use crate::network_manager::types::{HostBroadcaster, NetworkMessage};
@@ -20,7 +19,12 @@ fn get_song() -> Song {
     let artist_name = get_input(&"Artist Name".to_string(), true);
     let album_name = get_input(&"Album Name".to_string(), true);
 
-    Song { song_name, artist_name, album_name, position: 0 }
+    Song {
+        song_name,
+        artist_name,
+        album_name,
+        position: 0,
+    }
 }
 
 // "code" command: just prints the session code
@@ -53,10 +57,16 @@ impl PlayLaterHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let song = get_song();
         match self.broadcaster.as_mut() {
-            Some(bc) => {bc.broadcast(NetworkMessage::PlayNext(song.clone()));},
+            Some(bc) => {
+                bc.broadcast(NetworkMessage::PlayNext(song.clone()));
+            }
             _ => {}
         }
-        Arc::clone(&self.play_state).lock().await.play_later(song).await;
+        self.play_state
+            .lock()
+            .await
+            .play_later(song)
+            .await;
         Ok(CommandStatus::Done)
     }
 }
@@ -72,26 +82,26 @@ impl ExecuteCommand for PlayLaterHandler {
 }
 // --
 
-
 // -- pn command: Play a specific song next
 struct PlayNextHandler {
     play_state: Arc<Mutex<PlayState>>,
     broadcaster: Option<HostBroadcaster>,
-    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>
+    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>,
 }
 
 impl PlayNextHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         let song = get_song();
         match self.broadcaster.as_mut() {
-            
             Some(_bc) => {
                 self.play_state.lock().await.play_next(song).await;
-            },
+            }
 
             None => {
                 let mut writer = self.writer.as_mut().unwrap().lock().await;
-                let _ = writer.write_all(NetworkMessage::PlayNext(song).to_wire().as_bytes()).await;
+                let _ = writer
+                    .write_all(NetworkMessage::PlayNext(song).to_wire().as_bytes())
+                    .await;
                 let _ = writer.flush().await;
             }
         }
@@ -114,27 +124,27 @@ impl ExecuteCommand for PlayNextHandler {
 struct QueueHandler {
     play_state: Arc<Mutex<PlayState>>,
     broadcaster: Option<HostBroadcaster>,
-    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>
+    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>,
 }
 
 impl QueueHandler {
     async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
         match self.broadcaster.as_mut() {
-            
             Some(_bc) => {
-                let play_state = Arc::clone(&self.play_state);
-                let queue = play_state.lock().await.get_queue().await;
+                let queue = self.play_state.lock().await.get_queue().await;
 
                 let mut index = 1;
                 for song in queue {
                     println!("{index} - {song}");
                     index += 1;
                 }
-            },
+            }
 
             None => {
                 let mut writer = self.writer.as_mut().unwrap().lock().await;
-                let _ = writer.write_all(NetworkMessage::GetQueue.to_wire().as_bytes()).await;
+                let _ = writer
+                    .write_all(NetworkMessage::GetQueue.to_wire().as_bytes())
+                    .await;
                 let _ = writer.flush().await;
             }
         }
@@ -153,33 +163,41 @@ impl ExecuteCommand for QueueHandler {
 }
 // --
 
-pub async fn looper(code: String, play_state: Arc<Mutex<PlayState>>, broadcaster: Option<HostBroadcaster>, writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>) { 
+pub async fn looper(
+    code: String,
+    play_state: Arc<Mutex<PlayState>>,
+    broadcaster: Option<HostBroadcaster>,
+    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>,
+) {
     let mut repl = Repl::builder()
-        .add("code", Command::new(
-            "Print the code",
-            vec![],
-            Box::new(CodeHandler {
-                code,
-            })
-        ))
-        .add("pn", Command::new(
-            "Play a specific song next (start of queue)",
-            vec![],
-            Box::new(PlayNextHandler {
-                play_state: Arc::clone(&play_state),
-                broadcaster: broadcaster.clone(),
-                writer: writer.clone()
-            })
-        ))
-        .add("get-queue", Command::new(
-            "Get the host's song queue", 
-            vec![],
-            Box::new(QueueHandler {
-                play_state: Arc::clone(&play_state),
-                broadcaster: broadcaster.clone(),
-                writer: writer.clone()
-            })
-        ))
+        .add(
+            "code",
+            Command::new("Print the code", vec![], Box::new(CodeHandler { code })),
+        )
+        .add(
+            "pn",
+            Command::new(
+                "Play a specific song next (start of queue)",
+                vec![],
+                Box::new(PlayNextHandler {
+                    play_state: Arc::clone(&play_state),
+                    broadcaster: broadcaster.clone(),
+                    writer: writer.clone(),
+                }),
+            ),
+        )
+        .add(
+            "get-queue",
+            Command::new(
+                "Get the host's song queue",
+                vec![],
+                Box::new(QueueHandler {
+                    play_state: Arc::clone(&play_state),
+                    broadcaster: broadcaster.clone(),
+                    writer: writer.clone(),
+                }),
+            ),
+        )
         .build()
         .expect("Failed to create repl");
 

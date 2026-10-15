@@ -1,11 +1,10 @@
-use cider_api::{CiderClient};
+use super::spotify::SpotifyPlayer;
+use cider_api::CiderClient;
 use nowhear::source::PlatformMediaSource;
 use serde::{self, Deserialize, Serialize};
-use super::spotify::SpotifyPlayer;
-
 
 pub struct CiderControl {
-    pub cider: CiderClient
+    pub cider: CiderClient,
 }
 
 pub enum Player {
@@ -15,9 +14,8 @@ pub enum Player {
 
 pub struct PlayState {
     pub player: Player,
-    pub source: PlatformMediaSource
+    pub source: PlatformMediaSource,
 }
-
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Config {
@@ -28,8 +26,7 @@ pub enum Config {
         refresh_token: String,
         client_id: String,
         client_secret: String,
-        access_token: String
-
+        access_token: String,
     },
 }
 
@@ -39,5 +36,5 @@ pub struct Song {
     pub artist_name: String,
     pub album_name: String,
     // pub time_started: SystemTime
-    pub position: u64
+    pub position: u64,
 }

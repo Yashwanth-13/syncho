@@ -1,12 +1,12 @@
 use super::types::*;
-use tokio::io::{AsyncBufReadExt, BufReader, BufWriter};
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::net::{TcpStream};
-use std::process::exit;
-use std::sync::{Arc};
-use futures::lock::Mutex;
 use crate::network_manager::helpers::{process_event, send};
 use crate::player::player::PlayState;
+use futures::lock::Mutex;
+use std::process::exit;
+use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, BufReader, BufWriter};
+use tokio::net::TcpStream;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 pub async fn join_session(
     host_addr: &str,
@@ -17,7 +17,8 @@ pub async fn join_session(
     println!("[syncho] Connected to host at {}", host_addr);
 
     let (read_half, write_half) = stream.into_split();
-    let reader: Arc<Mutex<BufReader<OwnedReadHalf>>> = Arc::new(Mutex::new(BufReader::new(read_half)));
+    let reader: Arc<Mutex<BufReader<OwnedReadHalf>>> =
+        Arc::new(Mutex::new(BufReader::new(read_half)));
     let writer = Arc::new(Mutex::new(BufWriter::new(write_half)));
 
     // Send auth
@@ -28,7 +29,9 @@ pub async fn join_session(
     let _ = send(&writer, auth_msg).await;
     // Read auth response
     let mut line = String::new();
-    {reader.lock().await.read_line(&mut line).await?;}
+    {
+        reader.lock().await.read_line(&mut line).await?;
+    }
     match serde_json::from_str::<NetworkMessage>(line.trim())? {
         NetworkMessage::AuthOk => {
             println!("[syncho] Authenticated! Receiving sync events…");
@@ -45,15 +48,19 @@ pub async fn join_session(
 
     // Listening to host
     tokio::spawn(listen_to_host(line, Arc::clone(&reader), play_state));
-    
+
     Ok(writer)
 }
 
 // Continuous loop to listen to host's events and process them
-async fn listen_to_host(mut line: String, reader: Arc<Mutex<BufReader<OwnedReadHalf>>>, play_state: Arc<Mutex<PlayState>>) {
+async fn listen_to_host(
+    mut line: String,
+    reader: Arc<Mutex<BufReader<OwnedReadHalf>>>,
+    play_state: Arc<Mutex<PlayState>>,
+) {
     loop {
         line.clear();
-        let n = {reader.lock().await.read_line(&mut line).await.unwrap()};
+        let n = { reader.lock().await.read_line(&mut line).await.unwrap() };
         if n == 0 {
             println!("[syncho] Host closed the connection.");
             exit(0);

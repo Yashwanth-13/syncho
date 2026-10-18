@@ -12,19 +12,18 @@ use crate::network_manager::helpers::{is_same_player, make_song, process_event, 
 use crate::player::types::PlayState;
 use nowhear::{MediaEvent, MediaSource, MediaSourceBuilder, PlaybackState};
 
-/// Returns a [`HostBroadcaster`] you can call from the REPL to push events.
+
 pub async fn start_host(
     listener: TcpListener,
     play_state: Arc<Mutex<PlayState>>,
     session_code: Arc<String>,
-) -> HostBroadcaster {
+) {
     // Channel with room for 64 in-flight messages.
     let (tx, _rx) = broadcast::channel::<NetworkMessage>(64);
     let broadcaster = HostBroadcaster { tx: tx.clone() };
 
+    tokio::spawn(listen_to_playback(broadcaster, play_state.lock().await.get_player_str()));
     tokio::spawn(accept_loop(listener, play_state, session_code, tx));
-
-    broadcaster
 }
 
 // Listens to playback events

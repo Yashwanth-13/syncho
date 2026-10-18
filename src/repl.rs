@@ -30,7 +30,7 @@ fn get_song() -> Song {
 
 #[derive(Clone)]
 pub enum Role {
-    Host { _bc: HostBroadcaster },
+    Host,
     Client { writer: Arc<Mutex<BufWriter<OwnedWriteHalf>>> },
 }
 

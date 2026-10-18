@@ -5,12 +5,10 @@ mod player;
 mod repl;
 
 use crate::{
-    helpers::{generate_numeric_code, get_input},
-    network_manager::{
+    helpers::{generate_numeric_code, get_input}, network_manager::{
         client::join_session,
         host::{listen_to_playback, start_host},
-    },
-    player::types::{Config, PlayState},
+    }, player::types::{Config, PlayState}, repl::Role,
 };
 
 use clap::Parser;
@@ -45,7 +43,7 @@ async fn main() {
         let broadcaster = start_host(listener, play_state.clone(), Arc::clone(&code)).await;
 
         tokio::spawn(listen_to_playback(broadcaster.clone(), curr_player.clone())); // Listen to playback changes
-        repl::looper(code.to_string(), play_state, Some(broadcaster), None).await;
+        repl::looper(code.to_string(), play_state, Role::Host { _bc: broadcaster }).await;
     } else if args.join {
         let host_addr = format!("{}:8080", get_input(&"Host IP".to_string(), false));
         // let host_addr = "127.0.0.1:8080";
@@ -55,7 +53,7 @@ async fn main() {
 
         match result {
             Ok(writer) => {
-                repl::looper(code.to_string(), play_state, None, Some(writer)).await;
+                repl::looper(code.to_string(), play_state, Role::Client { writer }).await;
             }
 
             Err(_) => {

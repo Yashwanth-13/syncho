@@ -27,177 +27,87 @@ fn get_song() -> Song {
     }
 }
 
-// "code" command: just prints the session code
-struct CodeHandler {
-    code: String,
+
+#[derive(Clone)]
+pub enum Role {
+    Host { _bc: HostBroadcaster },
+    Client { writer: Arc<Mutex<BufWriter<OwnedWriteHalf>>> },
 }
-impl CodeHandler {
-    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        println!("Session Code: {}", &self.code);
-        Ok(CommandStatus::Done)
-    }
+
+async fn send(w: &Mutex<BufWriter<OwnedWriteHalf>>, msg: NetworkMessage) -> std::io::Result<()> {
+    let mut w = w.lock().await;
+    w.write_all(msg.to_wire().as_bytes()).await?;
+    w.flush().await
 }
-impl ExecuteCommand for CodeHandler {
+
+struct FnCmd<F>(F);
+impl<F, Fut> ExecuteCommand for FnCmd<F>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = anyhow::Result<CommandStatus>> + 'static,
+{
     fn execute(
         &mut self,
         _args: Vec<String>,
-        _args_info: Vec<CommandArgInfo>,
+        _info: Vec<CommandArgInfo>,
     ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
-        Box::pin(self.handle_command())
+        Box::pin((self.0)())
     }
 }
 
-// "pl" command: play a specific song later
-struct PlayLaterHandler {
-    play_state: Arc<Mutex<PlayState>>,
-    broadcaster: Option<HostBroadcaster>,
+fn cmd<F, Fut>(desc: &str, f: F) -> Command
+where
+    F: FnMut() -> Fut + 'static,
+    Fut: Future<Output = anyhow::Result<CommandStatus>> + 'static,
+{
+    Command::new(desc, vec![], Box::new(FnCmd(f)))
 }
 
-impl PlayLaterHandler {
-    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        let song = get_song();
-        match self.broadcaster.as_mut() {
-            Some(bc) => {
-                bc.broadcast(NetworkMessage::PlayNext(song.clone()));
-            }
-            _ => {}
-        }
-        self.play_state
-            .lock()
-            .await
-            .play_later(song)
-            .await;
-        Ok(CommandStatus::Done)
-    }
-}
-
-impl ExecuteCommand for PlayLaterHandler {
-    fn execute(
-        &mut self,
-        _args: Vec<String>,
-        _args_info: Vec<CommandArgInfo>,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
-        Box::pin(self.handle_command())
-    }
-}
-// --
-
-// -- pn command: Play a specific song next
-struct PlayNextHandler {
-    play_state: Arc<Mutex<PlayState>>,
-    broadcaster: Option<HostBroadcaster>,
-    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>,
-}
-
-impl PlayNextHandler {
-    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        let song = get_song();
-        match self.broadcaster.as_mut() {
-            Some(_bc) => {
-                self.play_state.lock().await.play_next(song).await;
-            }
-
-            None => {
-                let mut writer = self.writer.as_mut().unwrap().lock().await;
-                let _ = writer
-                    .write_all(NetworkMessage::PlayNext(song).to_wire().as_bytes())
-                    .await;
-                let _ = writer.flush().await;
-            }
-        }
-        Ok(CommandStatus::Done)
-    }
-}
-
-impl ExecuteCommand for PlayNextHandler {
-    fn execute(
-        &mut self,
-        _args: Vec<String>,
-        _args_info: Vec<CommandArgInfo>,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
-        Box::pin(self.handle_command())
-    }
-}
-// --
-
-// -- queue command: Get the host's queue of songs
-struct QueueHandler {
-    play_state: Arc<Mutex<PlayState>>,
-    broadcaster: Option<HostBroadcaster>,
-    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>,
-}
-
-impl QueueHandler {
-    async fn handle_command(&mut self) -> anyhow::Result<CommandStatus> {
-        match self.broadcaster.as_mut() {
-            Some(_bc) => {
-                let queue = self.play_state.lock().await.get_queue().await;
-
-                let mut index = 1;
-                for song in queue {
-                    println!("{index} - {song}");
-                    index += 1;
+pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) {
+    let pn = {
+        let (ps, role) = (ps.clone(), role.clone());
+        cmd("Play a song next", move || {
+            let (ps, role) = (ps.clone(), role.clone());
+            async move {
+                let song = tokio::task::block_in_place(get_song);
+                match role {
+                    Role::Host { .. } => ps.lock().await.play_next(song).await,
+                    Role::Client { writer } => {
+                        let _ = send(&writer, NetworkMessage::PlayNext(song)).await;
+                    }
                 }
+                Ok(CommandStatus::Done)
             }
+        })
+    };
 
-            None => {
-                let mut writer = self.writer.as_mut().unwrap().lock().await;
-                let _ = writer
-                    .write_all(NetworkMessage::GetQueue.to_wire().as_bytes())
-                    .await;
-                let _ = writer.flush().await;
+    let queue = {
+        let (ps, role) = (ps.clone(), role.clone());
+        cmd("Get the host's song queue", move || {
+            let (ps, role) = (ps.clone(), role.clone());
+            async move {
+                match role {
+                    Role::Host { .. } => {
+                        for (i, s) in ps.lock().await.get_queue().await.iter().enumerate() {
+                            println!("{} - {s}", i + 1);
+                        }
+                    }
+                    Role::Client { writer } => {
+                        let _ = send(&writer, NetworkMessage::GetQueue).await;
+                    }
+                }
+                Ok(CommandStatus::Done)
             }
-        }
-        Ok(CommandStatus::Done)
-    }
-}
+        })
+    };
 
-impl ExecuteCommand for QueueHandler {
-    fn execute(
-        &mut self,
-        _args: Vec<String>,
-        _args_info: Vec<CommandArgInfo>,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
-        Box::pin(self.handle_command())
-    }
-}
-// --
-
-pub async fn looper(
-    code: String,
-    play_state: Arc<Mutex<PlayState>>,
-    broadcaster: Option<HostBroadcaster>,
-    writer: Option<Arc<Mutex<BufWriter<OwnedWriteHalf>>>>,
-) {
     let mut repl = Repl::builder()
-        .add(
-            "code",
-            Command::new("Print the code", vec![], Box::new(CodeHandler { code })),
-        )
-        .add(
-            "pn",
-            Command::new(
-                "Play a specific song next (start of queue)",
-                vec![],
-                Box::new(PlayNextHandler {
-                    play_state: Arc::clone(&play_state),
-                    broadcaster: broadcaster.clone(),
-                    writer: writer.clone(),
-                }),
-            ),
-        )
-        .add(
-            "get-queue",
-            Command::new(
-                "Get the host's song queue",
-                vec![],
-                Box::new(QueueHandler {
-                    play_state: Arc::clone(&play_state),
-                    broadcaster: broadcaster.clone(),
-                    writer: writer.clone(),
-                }),
-            ),
-        )
+        .add("code", cmd("Print the code", move || {
+            let code = code.clone();
+            async move { println!("Session Code: {code}"); Ok(CommandStatus::Done) }
+        }))
+        .add("pn", pn)
+        .add("get-queue", queue)
         .build()
         .expect("Failed to create repl");
 

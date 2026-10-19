@@ -1,25 +1,10 @@
-use super::super::network_manager::helpers::is_same_player;
 use super::spotify::SpotifyPlayer;
 use super::types::*;
-pub use crate::player::types::PlayState;
-use nowhear::{MediaSource, MediaSourceBuilder};
-
-fn format_song(song: &Song) -> String {
-    let mut formatted_song = String::new();
-    formatted_song.push_str(&song.song_name);
-
-    if !song.artist_name.is_empty() {
-        formatted_song.push_str(&format!(" by {}", song.artist_name).to_string());
-    }
-
-    if !song.album_name.is_empty() {
-        formatted_song.push_str(&format!(" from {}", song.album_name));
-    }
-
-    formatted_song
-}
+use crate::player::types::PlayState;
+use crate::helpers::format_song;
 
 impl PlayState {
+    
     // PlayState constructor
     pub async fn new(config: &Config) -> Self {
         let player = match config {
@@ -37,9 +22,9 @@ impl PlayState {
                 access_token.clone(),
             )),
         };
-        let source = MediaSourceBuilder::new().build().await.unwrap();
+        
 
-        PlayState { player, source }
+        PlayState { player, player_online: false }
     }
 
     pub fn get_player_str(&self) -> String {
@@ -49,25 +34,12 @@ impl PlayState {
         }
     }
 
-    fn is_running(target_player: String, players: Vec<String>) -> bool {
-        for player in players {
-            if is_same_player(&target_player, &player) {
-                return true;
-            }
-        }
-
-        false
+    pub fn update_player_status(&mut self, status: bool) {
+        self.player_online = status;
     }
 
     async fn can_call_player(&self) -> bool {
-        let results = self.source.list_players().await;
-        let players = match results {
-            Ok(plr) => plr,
-            _ => return false,
-        };
-        let target_player_str = self.get_player_str();
-
-        PlayState::is_running(target_player_str, players)
+        self.player_online
     }
 
     pub async fn get_current_song(&mut self) -> Option<Song> {
@@ -170,7 +142,7 @@ impl PlayState {
 
     pub async fn play_pause(&mut self) {
         if !self.can_call_player().await {
-            println!("[syncho] Your player is not running.");
+            println!("[syncho] Play/Pause - Your player is not running.");
             return;
         };
 
@@ -196,6 +168,7 @@ impl PlayState {
             return;
         };
 
+        // TODO - Print the name of the song that the player selected instead of what the user typed
         println!("Playing next - {formatted_song}");
         match &mut self.player {
             Player::Cider(client) => {

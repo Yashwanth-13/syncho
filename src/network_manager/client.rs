@@ -1,6 +1,7 @@
 use super::types::*;
 use crate::network_manager::helpers::{process_event, send};
 use crate::player::player::PlayState;
+
 use futures::lock::Mutex;
 use std::process::exit;
 use std::sync::Arc;
@@ -27,6 +28,7 @@ pub async fn join_session(
     };
 
     let _ = send(&writer, auth_msg).await;
+
     // Read auth response
     let mut line = String::new();
     {
@@ -47,7 +49,7 @@ pub async fn join_session(
     }
 
     // Listening to host
-    tokio::spawn(listen_to_host(line, Arc::clone(&reader), play_state));
+    tokio::spawn(listen_to_host(line, reader, play_state));
 
     Ok(writer)
 }
@@ -75,6 +77,6 @@ async fn listen_to_host(
             }
         };
 
-        process_event(msg, Arc::clone(&play_state), None).await;
+        process_event(msg, &play_state, None).await;
     }
 }

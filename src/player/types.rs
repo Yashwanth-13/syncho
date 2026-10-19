@@ -1,20 +1,22 @@
 use super::spotify::SpotifyPlayer;
 use cider_api::CiderClient;
-use nowhear::source::PlatformMediaSource;
 use serde::{self, Deserialize, Serialize};
 
+#[derive(Debug, Clone)]
 pub struct CiderControl {
     pub cider: CiderClient,
 }
 
+#[derive(Debug, Clone)]
 pub enum Player {
     Cider(CiderControl),
     Spotify(SpotifyPlayer),
 }
 
+#[derive(Debug, Clone)]
 pub struct PlayState {
     pub player: Player,
-    pub source: PlatformMediaSource,
+    pub player_online: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

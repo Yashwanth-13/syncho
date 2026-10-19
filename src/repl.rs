@@ -1,4 +1,4 @@
-use futures::lock::Mutex;
+use tokio::sync::Mutex;
 use mini_async_repl::{
     CommandStatus, Repl, anyhow,
     command::{Command, CommandArgInfo, ExecuteCommand},
@@ -9,9 +9,8 @@ use std::sync::Arc;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::net::tcp::OwnedWriteHalf;
 
-use crate::helpers::get_input;
-use crate::network_manager::types::{HostBroadcaster, NetworkMessage};
-use crate::player::player::PlayState;
+use crate::{helpers::get_input, player::types::PlayState};
+use crate::network_manager::types::{NetworkMessage};
 use crate::player::types::Song;
 
 fn get_song() -> Song {
@@ -112,4 +111,5 @@ pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) {
         .expect("Failed to create repl");
 
     repl.run().await.expect("REPL error");
+    // tokio::signal::ctrl_c().await;
 }

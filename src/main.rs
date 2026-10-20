@@ -96,6 +96,8 @@ async fn main() {
                 let (mut send, mut recv) = conn.open_bi().await.unwrap();
                 send.write_all(&NetworkMessage::Hello.to_bytes()).await;
                 send.flush().await;
+            } else {
+                println!("no ticket");
             }
 
         }

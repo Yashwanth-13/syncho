@@ -67,12 +67,13 @@ async fn main() {
                 }
 
                 Ticket { name: username, endpoint_id: id, relay_urls: last }
+                // Ticket { name: username, endpoint_id: id}
             };
             
-
             let ticket_str = ticket.to_string();
             println!("Ticket: {} - len: {}", ticket, ticket_str.len());
-            
+            println!("{:?}", Ticket::from_str(&ticket_str));
+
             repl::looper(ticket_str, Arc::clone(&play_state), Role::Host).await;
             router.shutdown().await;
         },
@@ -128,7 +129,7 @@ impl Ticket {
 // method on `Ticket`.
 impl fmt::Display for Ticket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut text = data_encoding::BASE64_NOPAD.encode(&self.to_bytes()[..]);
+        let mut text = data_encoding::BASE32_NOPAD.encode(&self.to_bytes()[..]);
         text.make_ascii_lowercase();
         write!(f, "{}", text)
     }
@@ -139,7 +140,7 @@ impl fmt::Display for Ticket {
 impl FromStr for Ticket {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let bytes = data_encoding::BASE64_NOPAD.decode(s.to_ascii_uppercase().as_bytes())?;
+        let bytes = data_encoding::BASE32_NOPAD.decode(s.to_ascii_uppercase().as_bytes())?;
         Self::from_bytes(&bytes)
     }
 }

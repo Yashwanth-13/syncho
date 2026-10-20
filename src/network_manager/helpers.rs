@@ -1,4 +1,4 @@
-use super::types::*;
+use super::*;
 use crate::helpers::format_song;
 use crate::player::types::PlayState;
 use crate::player::types::Song;
@@ -173,7 +173,6 @@ pub async fn process_event(
 
         }
 
-        // Auth messages shouldn't arrive here
-        NetworkMessage::Hello | NetworkMessage::Welcome | NetworkMessage::Auth { .. } | NetworkMessage::AuthOk | NetworkMessage::AuthFail => {}
+        _ => {}
     }
 }

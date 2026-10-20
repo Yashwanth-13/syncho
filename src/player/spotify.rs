@@ -10,6 +10,7 @@ use super::types::Config;
 
 #[derive(Debug, Clone)]
 pub struct SpotifyPlayer {
+    username: String,
     client: Client,
     refresh_token: String,
     client_id: String,
@@ -50,6 +51,7 @@ fn clean_track_name(name: &str) -> String {
 
 impl SpotifyPlayer {
     pub fn new(
+        username: String,
         refresh_token: String,
         client_id: String,
         client_secret: String,
@@ -57,6 +59,7 @@ impl SpotifyPlayer {
     ) -> Self {
         SpotifyPlayer {
             client: Client::new(),
+            username,
             refresh_token,
             client_id,
             client_secret,
@@ -70,6 +73,7 @@ impl SpotifyPlayer {
 
     fn persist(&self) -> Result<()> {
         let cfg = Config::Spotify {
+            username: self.username.clone(),
             refresh_token: self.refresh_token.clone(),
             client_id: self.client_id.clone(),
             client_secret: self.client_secret.clone(),

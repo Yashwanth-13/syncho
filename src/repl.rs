@@ -10,7 +10,7 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::net::tcp::OwnedWriteHalf;
 
 use crate::{helpers::get_input, player::types::PlayState};
-use crate::network_manager::types::{NetworkMessage};
+use crate::network_manager::{NetworkMessage};
 use crate::player::types::Song;
 
 fn get_song() -> Song {

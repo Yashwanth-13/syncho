@@ -9,6 +9,7 @@ impl Config {
     fn create_config(path: &Path) -> Config {
         println!("\nNo previous config found. Creating new config\n");
 
+        let username = get_input("Username", false);
         let valid_players = vec!["Cider", "Spotify"];
 
         let selection = Select::new()
@@ -19,18 +20,19 @@ impl Config {
 
         let cnfg = match valid_players[selection] {
             "Cider" => {
-                let token = get_input(&"Enter your Cider token".to_string(), false);
-                Config::Cider { token }
+                let token = get_input("Enter your Cider token", false);
+                Config::Cider { username, token }
             }
 
             "Spotify" => {
                 let refresh_token =
-                    get_input(&"Enter your Spotify refresh token".to_string(), false);
-                let client_id = get_input(&"Enter your Spotify client ID".to_string(), false);
+                    get_input("Enter your Spotify refresh token", false);
+                let client_id = get_input("Enter your Spotify client ID", false);
                 let client_secret =
-                    get_input(&"Enter your Spotify client secret".to_string(), false);
-                let access_token = get_input(&"Enter your Spotify access token".to_string(), false);
+                    get_input("Enter your Spotify client secret", false);
+                let access_token = get_input("Enter your Spotify access token", false);
                 Config::Spotify {
+                    username,
                     refresh_token,
                     client_id,
                     client_secret,
@@ -65,6 +67,13 @@ impl Config {
             }
         } else {
             Config::create_config(path)
+        }
+    }
+
+    pub fn get_username(config: &Config) -> String {
+        match config {
+            Config::Cider { username, .. } => username.to_string(),
+            Config::Spotify { username, .. } => username.to_string()
         }
     }
 }

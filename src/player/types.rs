@@ -22,9 +22,11 @@ pub struct PlayState {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Config {
     Cider {
+        username: String,
         token: String,
     },
     Spotify {
+        username: String,
         refresh_token: String,
         client_id: String,
         client_secret: String,

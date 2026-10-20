@@ -8,14 +8,16 @@ impl PlayState {
     // PlayState constructor
     pub async fn new(config: &Config) -> Self {
         let player = match config {
-            Config::Cider { token } => Player::Cider(CiderControl::new(token)),
+            Config::Cider {token, ..} => Player::Cider(CiderControl::new(token)),
 
             Config::Spotify {
+                username,
                 refresh_token,
                 client_id,
                 client_secret,
                 access_token,
             } => Player::Spotify(SpotifyPlayer::new(
+                username.clone(),
                 refresh_token.clone(),
                 client_id.clone(),
                 client_secret.clone(),

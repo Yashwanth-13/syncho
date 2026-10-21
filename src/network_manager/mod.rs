@@ -2,7 +2,7 @@
 // pub mod host;
 pub mod helpers;
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use crate::{network_manager::helpers::{process_event, send}, player::types::{PlayState, Song}};
 use anyhow::{anyhow};
 use serde::{Deserialize, Serialize};
@@ -12,13 +12,10 @@ use iroh::{protocol::ProtocolHandler};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum NetworkMessage {
-    Hello,
     Welcome { name: String},
-    Thanks { name: String},
+    LetMeIn { name: String},
+    NameErr,
     Bye,
-    Auth { code: String },
-    AuthOk,
-    AuthFail,
     Message { msg: String },
     Seek { position: String },
     CurrentState { song: Option<Song> },
@@ -37,7 +34,7 @@ impl NetworkMessage {
         s
     }
 
-    fn from_bytes(bytes: &[u8]) -> Self {
+    pub fn from_bytes(bytes: &[u8]) -> Self {
         serde_json::from_slice(bytes).unwrap()
     }
 
@@ -77,26 +74,25 @@ impl NetworkManager {
 
     async fn greet( &self, reader: &mut iroh::endpoint::RecvStream, writer: &mut iroh::endpoint::SendStream ) -> Result<String, anyhow::Error> {
 
-        let message = NetworkMessage::from_bytes(&reader.read_to_end(1000).await?);
-        match message {
-            NetworkMessage::Hello => {
-                println!("Got hello");
-                writer.write_all(&NetworkMessage::Welcome { name: self.name.clone() }.to_bytes()).await;
-                writer.flush().await;
-            },
-
-            _ => {}
+        let message = match reader.read_to_end(1000).await {
+            Ok(msg_bytes) => NetworkMessage::from_bytes(&msg_bytes),
+            Err(e) => NetworkMessage::NameErr
         };
 
-        let message = NetworkMessage::from_bytes(&reader.read_to_end(1000).await?);
         match message {
-            NetworkMessage::Thanks { name } => {
-                println!("Got some name");
+            NetworkMessage::LetMeIn { name } => {
+                println!("Got a fkr: {}", name);
+                writer.write_all(&NetworkMessage::Welcome { name: self.name.clone() }.to_bytes()).await;
+                writer.flush().await;
+                writer.finish();
                 return Ok(name);
             },
 
-            _ => Err(anyhow!("Client did not send name"))
-        }
+            _ => {
+                println!("client no send name :(");
+                return Err(anyhow!("No name gng"));
+            }
+        };
         
     }
 }
@@ -130,8 +126,6 @@ impl ProtocolHandler for NetworkManager {
         greet_write.write_all(&message.to_bytes()).await;
         greet_write.flush().await;
         greet_write.finish();
-
-
 
         connection.close(1u8.into(), b"end_jam");
 

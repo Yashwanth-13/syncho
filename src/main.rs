@@ -15,8 +15,8 @@ use iroh::{Endpoint, EndpointAddr, PublicKey, RelayUrl};
 use serde::{Deserialize, Serialize};
 use clap::{Parser, ValueHint::Url};
 use core::fmt;
-use std::{collections::HashMap, str::FromStr, sync::Arc};
-use tokio::{io::AsyncWriteExt, sync::{Mutex, broadcast}};
+use std::{collections::HashMap, str::FromStr, sync::Arc, thread::sleep, time::Duration};
+use tokio::{io::AsyncWriteExt, sync::{Mutex, broadcast, mpsc}};
 
 #[derive(Parser, Debug)]
 enum Command {
@@ -40,7 +40,8 @@ async fn main() {
             // let code = generate_numeric_code();
             // println!("Session code: {}", code);
 
-            let (tx, rx) = broadcast::channel::<NetworkMessage>(64);
+            let (tx, _rx) = broadcast::channel::<NetworkMessage>(64);
+            let (tx_clients, _rx) = mpsc::channel::<String>(5);
             let broadcaster = HostBroadcaster { tx };
             tokio::spawn(listen_to_playback(broadcaster.clone(), Arc::clone(&play_state))); // Task to process playback events
             
@@ -66,8 +67,8 @@ async fn main() {
                     last = url.clone();
                 }
 
-                Ticket { name: username, endpoint_id: id, relay_urls: last }
-                // Ticket { name: username, endpoint_id: id}
+                // Ticket { name: username, endpoint_id: id, relay_urls: last }
+                Ticket { name: username, endpoint_id: id}
             };
             
             let ticket_str = ticket.to_string();
@@ -82,21 +83,33 @@ async fn main() {
             let code = get_input(&"Get the ticket".to_string(), false);
             if let Ok(ticket) = Ticket::from_str(&code) {
                 let ep_addr = ticket.endpoint_id;
-                let relay = ticket.relay_urls;
-                let preset = iroh_services::preset()
-                .relays([
-                    relay.to_string(),
-                ]).unwrap()
-                .build().unwrap();
+                // let relay = ticket.relay_urls;
+                // let preset = iroh_services::preset()
+                // .relays([
+                //     relay.to_string(),
+                // ]).unwrap()
+                // .build().unwrap();
 
-                let endpoint = Endpoint::bind(preset).await.unwrap();
-
-                println!("Tryna connect");
+                let endpoint = Endpoint::bind(iroh::endpoint::presets::N0).await.unwrap();
                 let conn = endpoint.connect(ep_addr, ALPN).await.unwrap();
 
                 let (mut send, mut recv) = conn.open_bi().await.unwrap();
-                send.write_all(&NetworkMessage::Hello.to_bytes()).await;
+                send.write_all(&NetworkMessage::LetMeIn { name: username }.to_bytes()).await;
                 send.flush().await;
+
+                send.finish();
+                let message = match recv.read_to_end(1000).await {
+                    Ok(msg_bytes) => NetworkMessage::from_bytes(&msg_bytes),
+                    Err(e) => NetworkMessage::NameErr
+                };
+
+                match message {
+                    NetworkMessage::Welcome { name } => {
+                        println!("[syncho] {} says hi!", name);
+                    },
+
+                    _ => {println!("did not get shit")}
+                }
             } else {
                 println!("no ticket");
             }
@@ -110,7 +123,7 @@ async fn main() {
 struct Ticket {
     name: String,
     endpoint_id: PublicKey,
-    relay_urls: RelayUrl
+    // relay_urls: RelayUrl
 }
 
 impl Ticket {

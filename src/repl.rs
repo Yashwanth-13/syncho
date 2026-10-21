@@ -3,7 +3,7 @@ use mini_async_repl::{
     CommandStatus, Repl, anyhow,
     command::{Command, CommandArgInfo, ExecuteCommand},
 };
-use std::future::Future;
+use std::{future::Future, process::exit};
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncWriteExt, BufWriter};
@@ -100,6 +100,12 @@ pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) {
         })
     };
 
+    let exit = {
+        cmd("Exit the app", async move || {
+            exit(0);
+        })
+    };
+
     let mut repl = Repl::builder()
         .add("code", cmd("Print the code", move || {
             let code = code.clone();
@@ -107,6 +113,7 @@ pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) {
         }))
         .add("pn", pn)
         .add("get-queue", queue)
+        .add("exit", exit)
         .build()
         .expect("Failed to create repl");
 

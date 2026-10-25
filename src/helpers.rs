@@ -1,11 +1,5 @@
 use dialoguer::Input;
-use rand::RngExt;
-
 use crate::player::types::Song;
-
-pub fn generate_numeric_code() -> String {
-    rand::rng().random_range(1111..9999).to_string()
-}
 
 pub fn get_input(prompt_string: &str, allow_empty: bool) -> String {
     if allow_empty {

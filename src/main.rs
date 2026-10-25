@@ -5,18 +5,18 @@ mod player;
 mod repl;
 
 use crate::{
-    helpers::{generate_numeric_code, get_input}, 
+    helpers::{get_input}, 
     network_manager::{helpers::listen_to_playback, HostBroadcaster, NetworkManager, NetworkMessage}, 
     player::types::{Config, PlayState}, 
     repl::Role,
 };
 
-use iroh::{Endpoint, EndpointAddr, PublicKey, RelayUrl};
+use iroh::{Endpoint, EndpointId, PublicKey, RelayUrl, endpoint::Connection};
 use serde::{Deserialize, Serialize};
-use clap::{Parser, ValueHint::Url};
+use clap::{Parser};
 use core::fmt;
-use std::{collections::HashMap, str::FromStr, sync::Arc, thread::sleep, time::Duration};
-use tokio::{io::AsyncWriteExt, sync::{Mutex, broadcast, mpsc}};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
+use tokio::{io::AsyncWriteExt, sync::{Mutex, broadcast, mpsc, oneshot}};
 
 #[derive(Parser, Debug)]
 enum Command {
@@ -25,6 +25,49 @@ enum Command {
     /// Join a jam
     Join,
 }
+
+#[derive(Debug, Clone)]
+struct Client {
+    name: String,
+    conn: Connection
+}
+
+enum ClientOp {
+    Joined { id: EndpointId, name: String, conn: Connection },
+    Left { id: EndpointId },
+    List { reply: oneshot::Sender<Vec<(EndpointId, String)>> },
+    Kick { id: EndpointId },
+}
+
+async fn handle_clients() {
+    let mut clients = HashMap::new();
+    while let Some(msg) = rx.recv().await {
+        match msg {
+            ClientOp::Joined { id, name, conn } => { 
+                if clients.contains_key(&id) {
+                    // name = name.push(); 
+                    // Whip up some shit to handle duplicate names
+                }
+                clients.insert(id, Client { name, conn });
+            }
+            ClientOp::Left { id } => { clients.remove(&id); }
+            ClientOp::List { reply } => {
+                let names: Vec<(EndpointId, String)> = clients
+                    .iter()
+                    .map(|(id, c)| (*id, c.name.clone()))
+                    .collect();
+                let _ = reply.send(names);
+            }
+            ClientOp::Kick { id } => {
+                if let Some(client) = clients.remove(&id) {
+                    client.conn.close(1u8.into(), b"kicked");
+                }
+
+            }
+        }
+    }
+}
+
 
 #[tokio::main]
 async fn main() {
@@ -37,11 +80,8 @@ async fn main() {
     let endpoint = iroh::Endpoint::bind(iroh::endpoint::presets::N0).await.unwrap();
     match command {
         Command::Host => {
-            // let code = generate_numeric_code();
-            // println!("Session code: {}", code);
-
-            let (tx, _rx) = broadcast::channel::<NetworkMessage>(64);
-            let (tx_clients, _rx) = mpsc::channel::<String>(5);
+            let (tx, _) = broadcast::channel::<NetworkMessage>(64);
+            let (tx_clients, _) = mpsc::channel::<String>(5);
             let broadcaster = HostBroadcaster { tx };
             tokio::spawn(listen_to_playback(broadcaster.clone(), Arc::clone(&play_state))); // Task to process playback events
             

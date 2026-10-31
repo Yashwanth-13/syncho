@@ -5,18 +5,15 @@ mod player;
 mod repl;
 
 use crate::{
-    helpers::{get_input}, 
-    network_manager::{helpers::listen_to_playback, HostBroadcaster, NetworkManager, NetworkMessage}, 
-    player::types::{Config, PlayState}, 
-    repl::Role,
+    helpers::get_input, network_manager::{Broadcaster, ClientOp, NetworkManager, NetworkMessage, helpers::{listen_to_playback, read, send}}, player::types::{Config, PlayState}, repl::Role,
 };
 
 use iroh::{Endpoint, EndpointId, PublicKey, RelayUrl, endpoint::Connection};
 use serde::{Deserialize, Serialize};
 use clap::{Parser};
 use core::fmt;
-use std::{collections::HashMap, str::FromStr, sync::Arc};
-use tokio::{io::AsyncWriteExt, sync::{Mutex, broadcast, mpsc, oneshot}};
+use std::{collections::{HashMap, HashSet}, str::FromStr, sync::Arc};
+use tokio::{sync::{Mutex, broadcast, mpsc::{self, Receiver}, oneshot}};
 
 #[derive(Parser, Debug)]
 enum Command {
@@ -25,49 +22,6 @@ enum Command {
     /// Join a jam
     Join,
 }
-
-#[derive(Debug, Clone)]
-struct Client {
-    name: String,
-    conn: Connection
-}
-
-enum ClientOp {
-    Joined { id: EndpointId, name: String, conn: Connection },
-    Left { id: EndpointId },
-    List { reply: oneshot::Sender<Vec<(EndpointId, String)>> },
-    Kick { id: EndpointId },
-}
-
-async fn handle_clients() {
-    let mut clients = HashMap::new();
-    while let Some(msg) = rx.recv().await {
-        match msg {
-            ClientOp::Joined { id, name, conn } => { 
-                if clients.contains_key(&id) {
-                    // name = name.push(); 
-                    // Whip up some shit to handle duplicate names
-                }
-                clients.insert(id, Client { name, conn });
-            }
-            ClientOp::Left { id } => { clients.remove(&id); }
-            ClientOp::List { reply } => {
-                let names: Vec<(EndpointId, String)> = clients
-                    .iter()
-                    .map(|(id, c)| (*id, c.name.clone()))
-                    .collect();
-                let _ = reply.send(names);
-            }
-            ClientOp::Kick { id } => {
-                if let Some(client) = clients.remove(&id) {
-                    client.conn.close(1u8.into(), b"kicked");
-                }
-
-            }
-        }
-    }
-}
-
 
 #[tokio::main]
 async fn main() {
@@ -81,10 +35,13 @@ async fn main() {
     match command {
         Command::Host => {
             let (tx, _) = broadcast::channel::<NetworkMessage>(64);
-            let (tx_clients, _) = mpsc::channel::<String>(5);
-            let broadcaster = HostBroadcaster { tx };
+            let (tx_client, rx_clients) = mpsc::channel::<ClientOp>(5);
+            let broadcaster = Broadcaster { tx, tx_client};
             tokio::spawn(listen_to_playback(broadcaster.clone(), Arc::clone(&play_state))); // Task to process playback events
             
+            // Task to handle client list
+            tokio::spawn(network_manager::handle_clients(rx_clients));
+
             let router = iroh::protocol::Router::builder(endpoint)
             .accept(ALPN, 
                 NetworkManager{  
@@ -94,26 +51,17 @@ async fn main() {
                 })
             .spawn();
             
-            
             router.endpoint().online().await;
             println!("Endpoint is online..");
             let endpoint_addr =  router.endpoint().addr();
             
             let ticket = {
                 let id = endpoint_addr.id;
-                let iter = endpoint_addr.relay_urls();
-                let mut last = RelayUrl::from_str("https://aps1-1.relay.n0.iroh.link./").unwrap();
-                for url in iter {
-                    last = url.clone();
-                }
-
-                // Ticket { name: username, endpoint_id: id, relay_urls: last }
                 Ticket { name: username, endpoint_id: id}
             };
             
             let ticket_str = ticket.to_string();
             println!("Ticket: {} - len: {}", ticket, ticket_str.len());
-            println!("{:?}", Ticket::from_str(&ticket_str));
 
             repl::looper(ticket_str, Arc::clone(&play_state), Role::Host).await;
             router.shutdown().await;
@@ -123,33 +71,40 @@ async fn main() {
             let code = get_input(&"Get the ticket".to_string(), false);
             if let Ok(ticket) = Ticket::from_str(&code) {
                 let ep_addr = ticket.endpoint_id;
-                // let relay = ticket.relay_urls;
-                // let preset = iroh_services::preset()
-                // .relays([
-                //     relay.to_string(),
-                // ]).unwrap()
-                // .build().unwrap();
 
                 let endpoint = Endpoint::bind(iroh::endpoint::presets::N0).await.unwrap();
                 let conn = endpoint.connect(ep_addr, ALPN).await.unwrap();
 
-                let (mut send, mut recv) = conn.open_bi().await.unwrap();
-                send.write_all(&NetworkMessage::LetMeIn { name: username }.to_bytes()).await;
-                send.flush().await;
-
-                send.finish();
-                let message = match recv.read_to_end(1000).await {
-                    Ok(msg_bytes) => NetworkMessage::from_bytes(&msg_bytes),
-                    Err(e) => NetworkMessage::NameErr
-                };
-
-                match message {
-                    NetworkMessage::Welcome { name } => {
-                        println!("[syncho] {} says hi!", name);
+                let (mut writer, mut reader) = conn.open_bi().await.unwrap();
+            
+                send(&mut writer, NetworkMessage::LetMeIn { name: username }).await.unwrap();
+                let host_name = match read(&mut reader).await {
+                    Ok(msg) => {
+                        match msg {
+                            NetworkMessage::Welcome { name } => name,
+                            _ => "".to_string(),
+                        }
                     },
 
-                    _ => {println!("did not get shit")}
+                    Err(e) => {
+                        println!("{}", e);
+                        "".to_string()
+                    }
+                };
+
+                println!("Host: {}", host_name);
+
+                let curr = read(&mut reader).await.unwrap();
+                match curr {
+                    NetworkMessage::CurrentState { song } => {
+                        println!("Curr song: {:?}", song);
+                    },
+
+                    _ => {}
                 }
+
+                conn.close(1u8.into(), b"client-exit");
+
             } else {
                 println!("no ticket");
             }

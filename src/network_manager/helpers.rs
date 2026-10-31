@@ -16,7 +16,7 @@ pub fn is_same_player(target_player: &String, current_player: &str) -> bool {
 
 
 // Listens to playback events
-pub async fn listen_to_playback(broadcaster: HostBroadcaster, play_state: Arc<Mutex<PlayState>>) {
+pub async fn listen_to_playback(broadcaster: Broadcaster, play_state: Arc<Mutex<PlayState>>) {
     let source = MediaSourceBuilder::new().build().await.unwrap();
     let mut stream= source.event_stream().await.unwrap();
 
@@ -105,13 +105,29 @@ pub fn make_song(track: Track) -> Song {
 }
 
 pub async fn send(
-    writer: &Arc<Mutex<iroh::endpoint::SendStream>>,
+    writer: &mut iroh::endpoint::SendStream,
     msg: NetworkMessage,
-) -> std::io::Result<()> {
-    let mut locked_wr = writer.lock().await;
+) -> anyhow::Result<()> {
+    let payload = msg.to_bytes();
+    let size = payload.len() as u32;
+    
+    writer.write_all(&size.to_be_bytes()).await?; // Write the message size first
+    writer.write_all(&payload).await?; // Write the actual message
 
-    locked_wr.write_all(&msg.to_bytes()).await?;
-    locked_wr.flush().await
+    Ok(())
+}
+
+pub async fn read(recv: &mut iroh::endpoint::RecvStream) -> anyhow::Result<NetworkMessage> {
+    let mut len = [0u8; 4];
+    recv.read_exact(&mut len).await?; // Get the message size first
+    
+    let len = u32::from_be_bytes(len) as usize;
+    anyhow::ensure!(len <= 1000, "frame too large");
+    
+    let mut buf = vec![0u8; len];
+    recv.read_exact(&mut buf).await?; // Read the actual message
+    
+    Ok(NetworkMessage::from_bytes(&buf))
 }
 
 /// Process the receieved event
@@ -156,7 +172,7 @@ pub async fn process_event(
 
         NetworkMessage::GetQueue => {
             let queue = ps.get_queue().await;
-            let _ = send(&writer.unwrap(), NetworkMessage::Queue { queue }).await;
+            // let _ = send(&writer.unwrap().lock(), NetworkMessage::Queue { queue }).await;
         }
 
         NetworkMessage::PlayNext(song) => {

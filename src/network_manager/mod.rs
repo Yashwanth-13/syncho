@@ -2,14 +2,16 @@
 // pub mod host;
 pub mod helpers;
 
-use std::{sync::Arc, time::Duration};
-use crate::{network_manager::helpers::{process_event, send}, player::types::{PlayState, Song}};
+use std::{collections::{HashMap, HashSet}};
+use std::{sync::{Arc}, time::Duration};
+use crate::{network_manager::helpers::{process_event, read, send}, player::types::{PlayState, Song}};
 use anyhow::{anyhow};
 use serde::{Deserialize, Serialize};
-use tokio::{io::AsyncWriteExt, sync::{Mutex, broadcast}, time::timeout};
-use iroh::{protocol::ProtocolHandler};
+use tokio::{io::AsyncWriteExt, sync::{Mutex, broadcast, mpsc::{self, Receiver}, oneshot}};
+use iroh::{EndpointId, endpoint::Connection, protocol::ProtocolHandler};
 
 
+#[non_exhaustive]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum NetworkMessage {
     Welcome { name: String},
@@ -18,10 +20,10 @@ pub enum NetworkMessage {
     Bye,
     Message { msg: String },
     Seek { position: String },
+    GetCurrentState,
     CurrentState { song: Option<Song> },
     Play(Song),
     PlayPause,
-    // PlayLater(Song),
     PlayNext(Song),
     GetQueue,
     Queue { queue: Vec<String> },
@@ -44,25 +46,37 @@ impl NetworkMessage {
 }
 
 #[derive(Debug, Clone)]
-pub struct HostBroadcaster {
+pub struct Broadcaster {
     pub tx: broadcast::Sender<NetworkMessage>,
+    pub tx_client: mpsc::Sender<ClientOp>
 }
 
-impl HostBroadcaster {
+impl Broadcaster {
+    /// Sends a `NetworkMessage` to the broadcast
     pub fn broadcast(&self, msg: NetworkMessage) {
         // `send` only fails when there are zero receivers, which is fine.
         let _ = self.tx.send(msg);
     }
 
-    pub fn get_handle(&self) -> broadcast::Receiver<NetworkMessage> {
-        self.tx.subscribe()
+    pub fn send_client_event(&self, msg: ClientOp) {
+        // `send` only fails when there are zero receivers, which is fine.
+        let _ = self.tx_client.send(msg);
     }
 }
+
+#[derive(Debug)]
+pub enum ClientOp {
+    Joined { id: EndpointId, name: String, conn: Connection },
+    Left { id: EndpointId },
+    List { reply: oneshot::Sender<Vec<(EndpointId, String)>> },
+    Kick { id: EndpointId },
+}
+
 
 #[derive(Debug, Clone)]
 pub struct NetworkManager {
     pub name: String,
-    pub bc: HostBroadcaster,
+    pub bc: Broadcaster,
     pub play_state: Arc<Mutex<PlayState>>,
 }
 
@@ -72,25 +86,19 @@ impl NetworkManager {
         todo!();
     }
 
-    async fn greet( &self, reader: &mut iroh::endpoint::RecvStream, writer: &mut iroh::endpoint::SendStream ) -> Result<String, anyhow::Error> {
-
-        let message = match reader.read_to_end(1000).await {
-            Ok(msg_bytes) => NetworkMessage::from_bytes(&msg_bytes),
-            Err(e) => NetworkMessage::NameErr
-        };
+    async fn greet( &self, reader: &mut iroh::endpoint::RecvStream, writer: &mut iroh::endpoint::SendStream,curr_song_state: NetworkMessage ) -> Result<String, anyhow::Error> {
+        let message = read(reader).await.unwrap();
 
         match message {
             NetworkMessage::LetMeIn { name } => {
-                println!("Got a fkr: {}", name);
-                writer.write_all(&NetworkMessage::Welcome { name: self.name.clone() }.to_bytes()).await;
-                writer.flush().await;
-                writer.finish();
+                // println!("[syncho] {} joined", name);
+                send(writer, NetworkMessage::Welcome { name: self.name.clone() }).await?;
+                send(writer, curr_song_state.clone()).await?;
                 return Ok(name);
             },
 
             _ => {
-                println!("client no send name :(");
-                return Err(anyhow!("No name gng"));
+                return Err(anyhow!("No name"));
             }
         };
         
@@ -103,38 +111,33 @@ impl ProtocolHandler for NetworkManager {
         &self,
         connection: iroh::endpoint::Connection,
     ) -> Result<(), iroh::protocol::AcceptError>
-    {
-        let (mut greet_write, mut greet_read) = connection.accept_bi().await?;
-        let client = connection.remote_id().to_string();
-        println!("[syncho] Client connected from {}", client);
-        
-        let username;
-        let result = timeout(Duration::from_secs(5), self.greet(&mut greet_read, &mut greet_write)).await;
-        if let Ok(Ok(client_name)) = result {
-            username = client_name;
-        } else {
-            connection.close(1u8.into(), b"Client did not send name");
-            return Ok(());
-        }
-
-        // Send the current song and close the stream
+    {     
+        let mut username = String::new();
+        // Send the current song
         let curr_song = { self.play_state.lock().await.get_current_song().await };
         let message = match curr_song {
             Some(song) => NetworkMessage::CurrentState { song: Some(song) },
             None => NetworkMessage::CurrentState { song: None },
         };
-        greet_write.write_all(&message.to_bytes()).await;
-        greet_write.flush().await;
-        greet_write.finish();
 
-        connection.close(1u8.into(), b"end_jam");
+        let (mut greet_write, mut greet_read) = connection.accept_bi().await?;
+        let result = self.greet(&mut greet_read, &mut greet_write, message).await;
+        if let Ok(client_name) = result {
+            username.push_str(&client_name);
+            println!("[syncho] {} joined", username);
+            self.bc.send_client_event(ClientOp::Joined { id: connection.remote_id(), name: client_name, conn: connection.clone() });
+        } else {
+            connection.close(1u8.into(), b"Client did not send name");
+            return Ok(());
+        }
 
+        connection.closed().await;
+        self.bc.send_client_event(ClientOp::Left { id: connection.remote_id() });
         Ok(())
     }
 }
 
 impl NetworkManager {
-    
     // Listen to messages from clients
     async fn read_client_stream(
         client: String,
@@ -160,3 +163,57 @@ impl NetworkManager {
     }
 }
 
+
+pub async fn handle_clients(mut rx: Receiver<ClientOp>) {
+    println!("task started");
+    let mut clients = HashMap::new();
+    let mut used_names = HashMap::<String, u32>::new();
+    loop {
+        if let Some(msg) = rx.recv().await {
+            match msg {
+                ClientOp::Joined { id, name, conn } => { 
+                    let name_counter = match used_names.get(&name) {
+                        Some(curr_val) => curr_val.to_owned() + 1,
+                        None => 1,
+                    };
+
+                    println!("Added {}", name.clone());
+                    used_names.insert(name.clone(), name_counter);
+                    clients.insert(id, Client { name, conn });
+                }
+                ClientOp::Left { id } => { 
+                    if let Some(client) = clients.remove(&id) {
+                        println!("[syncho] {} left", client.name);
+                    }
+
+                }
+                ClientOp::List { reply } => {
+                    let names: Vec<(EndpointId, String)> = clients
+                        .iter()
+                        .map(|(id, c)| (*id, c.name.clone()))
+                        .collect();
+                    let _ = reply.send(names);
+                }
+                ClientOp::Kick { id } => {
+                    if let Some(client) = clients.remove(&id) {
+                        client.conn.close(1u8.into(), b"kicked");
+                        match used_names.get(&client.name) {
+                            Some(curr_val) => {used_names.insert(client.name, curr_val.to_owned() - 1);},
+                            None => {},
+                        };
+                    }
+
+                }
+            }
+        } else {
+            println!("task dropped");
+            return;
+        }
+    };
+}
+
+#[derive(Debug, Clone)]
+struct Client {
+    name: String,
+    conn: Connection
+}

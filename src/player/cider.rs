@@ -1,4 +1,4 @@
-use cider_api::{CiderClient, CiderError};
+use cider_api::{CiderClient, CiderError, QueueItem};
 use std::{thread::sleep, time::Duration};
 use url::form_urlencoded;
 

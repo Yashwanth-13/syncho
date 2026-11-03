@@ -1,5 +1,3 @@
-// pub mod client;
-// pub mod host;
 pub mod helpers;
 
 use std::{collections::{HashMap, HashSet}};
@@ -7,7 +5,7 @@ use std::{sync::{Arc}, time::Duration};
 use crate::{network_manager::helpers::{process_event, read, send}, player::types::{PlayState, Song}};
 use anyhow::{anyhow};
 use serde::{Deserialize, Serialize};
-use tokio::{io::AsyncWriteExt, sync::{Mutex, broadcast, mpsc::{self, Receiver}, oneshot}};
+use tokio::{io::AsyncWriteExt, sync::{Mutex, broadcast, oneshot}};
 use iroh::{EndpointId, endpoint::Connection, protocol::ProtocolHandler};
 
 
@@ -48,7 +46,7 @@ impl NetworkMessage {
 #[derive(Debug, Clone)]
 pub struct Broadcaster {
     pub tx: broadcast::Sender<NetworkMessage>,
-    pub tx_client: mpsc::Sender<ClientOp>
+    pub tx_client: broadcast::Sender<ClientOp>
 }
 
 impl Broadcaster {
@@ -64,11 +62,11 @@ impl Broadcaster {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ClientOp {
     Joined { id: EndpointId, name: String, conn: Connection },
     Left { id: EndpointId },
-    List { reply: oneshot::Sender<Vec<(EndpointId, String)>> },
+    List,
     Kick { id: EndpointId },
 }
 
@@ -137,39 +135,12 @@ impl ProtocolHandler for NetworkManager {
     }
 }
 
-impl NetworkManager {
-    // Listen to messages from clients
-    async fn read_client_stream(
-        client: String,
-        reader: Arc<Mutex<iroh::endpoint::RecvStream>>,
-        writer: Arc<Mutex<iroh::endpoint::SendStream>>,
-        play_state: Arc<Mutex<PlayState>>,
-    ) {
-        let mut line = String::new();
-        loop {
-            line.clear();
-            let incoming_data = { reader.lock().await.read_to_end(1000).await };
-
-            match incoming_data {
-                Ok(read_bytes) => {
-                    let msg: NetworkMessage = NetworkMessage::from_bytes(&read_bytes);
-                    process_event(msg, &play_state, Some(&writer)).await;
-                },
-                Err(e) => {
-                    eprintln!("[syncho] Bad message from client({}): {}", client, e);
-                }
-            }
-        }
-    }
-}
-
-
-pub async fn handle_clients(mut rx: Receiver<ClientOp>) {
+pub async fn handle_clients(mut rx: broadcast::Receiver<ClientOp>) {
     println!("task started");
     let mut clients = HashMap::new();
     let mut used_names = HashMap::<String, u32>::new();
     loop {
-        if let Some(msg) = rx.recv().await {
+        if let Ok(msg) = rx.recv().await {
             match msg {
                 ClientOp::Joined { id, name, conn } => { 
                     let name_counter = match used_names.get(&name) {
@@ -187,12 +158,12 @@ pub async fn handle_clients(mut rx: Receiver<ClientOp>) {
                     }
 
                 }
-                ClientOp::List { reply } => {
+                ClientOp::List => {
                     let names: Vec<(EndpointId, String)> = clients
                         .iter()
                         .map(|(id, c)| (*id, c.name.clone()))
                         .collect();
-                    let _ = reply.send(names);
+                    println!("{:?}", names);
                 }
                 ClientOp::Kick { id } => {
                     if let Some(client) = clients.remove(&id) {

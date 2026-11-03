@@ -35,8 +35,8 @@ async fn main() {
     match command {
         Command::Host => {
             let (tx, _) = broadcast::channel::<NetworkMessage>(64);
-            let (tx_client, rx_clients) = mpsc::channel::<ClientOp>(5);
-            let broadcaster = Broadcaster { tx, tx_client};
+            let (tx_client, rx_clients) = broadcast::channel::<ClientOp>(5);
+            let broadcaster = Broadcaster { tx, tx_client };
             tokio::spawn(listen_to_playback(broadcaster.clone(), Arc::clone(&play_state))); // Task to process playback events
             
             // Task to handle client list
@@ -92,16 +92,8 @@ async fn main() {
                     }
                 };
 
-                println!("Host: {}", host_name);
+                println!("[syncho] Connected to Host: {}", host_name);
 
-                let curr = read(&mut reader).await.unwrap();
-                match curr {
-                    NetworkMessage::CurrentState { song } => {
-                        println!("Curr song: {:?}", song);
-                    },
-
-                    _ => {}
-                }
 
                 conn.close(1u8.into(), b"client-exit");
 

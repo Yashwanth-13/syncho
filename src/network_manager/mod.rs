@@ -1,11 +1,11 @@
 pub mod helpers;
 
-use std::{collections::{HashMap, HashSet}};
-use std::{sync::{Arc}, time::Duration};
+use std::{collections::{HashMap}};
+use std::{sync::{Arc}};
 use crate::{network_manager::helpers::{process_event, read, send}, player::types::{PlayState, Song}};
 use anyhow::{anyhow};
 use serde::{Deserialize, Serialize};
-use tokio::{io::AsyncWriteExt, sync::{Mutex, broadcast, oneshot}};
+use tokio::{sync::{Mutex, broadcast}};
 use iroh::{EndpointId, endpoint::Connection, protocol::ProtocolHandler};
 
 
@@ -16,12 +16,12 @@ pub enum NetworkMessage {
     LetMeIn { name: String},
     NameErr,
     Bye,
-    Message { msg: String },
     Seek { position: String },
     GetCurrentState,
     CurrentState { song: Option<Song> },
     Play(Song),
-    PlayPause,
+    Resume,
+    Pause,
     PlayNext(Song),
     GetQueue,
     Queue { queue: Vec<String> },
@@ -80,16 +80,12 @@ pub struct NetworkManager {
 
 
 impl NetworkManager {
-    async fn connect() {
-        todo!();
-    }
 
     async fn greet( &self, reader: &mut iroh::endpoint::RecvStream, writer: &mut iroh::endpoint::SendStream,curr_song_state: NetworkMessage ) -> Result<String, anyhow::Error> {
         let message = read(reader).await.unwrap();
 
         match message {
             NetworkMessage::LetMeIn { name } => {
-                // println!("[syncho] {} joined", name);
                 send(writer, NetworkMessage::Welcome { name: self.name.clone() }).await?;
                 send(writer, curr_song_state.clone()).await?;
                 return Ok(name);
@@ -124,9 +120,20 @@ impl ProtocolHandler for NetworkManager {
             username.push_str(&client_name);
             println!("[syncho] {} joined", username);
             self.bc.send_client_event(ClientOp::Joined { id: connection.remote_id(), name: client_name, conn: connection.clone() });
+            greet_write.finish();
         } else {
             connection.close(1u8.into(), b"Client did not send name");
             return Ok(());
+        }
+
+        let mut command_write;
+        let mut command_read;
+        loop {
+            (command_write, command_read) = connection.accept_bi().await?;
+            let command = read(&mut command_read).await.unwrap();
+            if process_event(command, &self.play_state, Some(&mut command_write)).await {
+                break;
+            }
         }
 
         connection.closed().await;
@@ -148,7 +155,6 @@ pub async fn handle_clients(mut rx: broadcast::Receiver<ClientOp>) {
                         None => 1,
                     };
 
-                    println!("Added {}", name.clone());
                     used_names.insert(name.clone(), name_counter);
                     clients.insert(id, Client { name, conn });
                 }

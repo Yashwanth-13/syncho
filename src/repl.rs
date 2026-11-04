@@ -3,14 +3,12 @@ use mini_async_repl::{
     CommandStatus, Repl, anyhow,
     command::{Command, CommandArgInfo, ExecuteCommand},
 };
-use std::{future::Future, process::exit};
+use std::{future::Future};
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio::net::tcp::OwnedWriteHalf;
 
-use crate::{helpers::get_input, player::types::PlayState};
-use crate::network_manager::{NetworkMessage};
+use crate::{helpers::{get_input}, player::types::PlayState};
+use crate::network_manager::{NetworkMessage, helpers::send};
 use crate::player::types::Song;
 
 fn get_song() -> Song {
@@ -30,13 +28,7 @@ fn get_song() -> Song {
 #[derive(Clone)]
 pub enum Role {
     Host,
-    Client { writer: Arc<Mutex<BufWriter<OwnedWriteHalf>>> },
-}
-
-async fn send(w: &Mutex<BufWriter<OwnedWriteHalf>>, msg: NetworkMessage) -> std::io::Result<()> {
-    let mut w = w.lock().await;
-    w.write_all(msg.to_wire().as_bytes()).await?;
-    w.flush().await
+    Client { connection: iroh::endpoint::Connection },
 }
 
 struct FnCmd<F>(F);
@@ -62,17 +54,19 @@ where
     Command::new(desc, vec![], Box::new(FnCmd(f)))
 }
 
-pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) {
+pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) -> anyhow::Result<()> {
     let pn = {
         let (ps, role) = (ps.clone(), role.clone());
-        cmd("Play a song next", move || {
+        cmd("Play a song next (if you are the listener, request the host to play a song next instead)", move || {
             let (ps, role) = (ps.clone(), role.clone());
             async move {
                 let song = tokio::task::block_in_place(get_song);
                 match role {
                     Role::Host { .. } => ps.lock().await.play_next(song).await,
-                    Role::Client { writer } => {
-                        let _ = send(&writer, NetworkMessage::PlayNext(song)).await;
+                    Role::Client { connection } => {
+                        let (mut writer, reader) = connection.open_bi().await.unwrap();
+                        let _ = send(&mut writer, NetworkMessage::PlayNext(song)).await;
+                        writer.finish()?;
                     }
                 }
                 Ok(CommandStatus::Done)
@@ -82,7 +76,7 @@ pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) {
 
     let queue = {
         let (ps, role) = (ps.clone(), role.clone());
-        cmd("Get the host's song queue", move || {
+        cmd("Get the song queue (if you are the listener, it wil be the host's queue)", move || {
             let (ps, role) = (ps.clone(), role.clone());
             async move {
                 match role {
@@ -91,18 +85,14 @@ pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) {
                             println!("{} - {s}", i + 1);
                         }
                     }
-                    Role::Client { writer } => {
-                        let _ = send(&writer, NetworkMessage::GetQueue).await;
+                    Role::Client { connection } => {
+                        let (mut writer, reader) = connection.open_bi().await.unwrap();
+                        let _ = send(&mut writer, NetworkMessage::GetQueue).await;
+                        writer.finish()?;
                     }
                 }
                 Ok(CommandStatus::Done)
             }
-        })
-    };
-
-    let exit = {
-        cmd("Exit the app", async move || {
-            exit(0);
         })
     };
 
@@ -111,12 +101,11 @@ pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) {
             let code = code.clone();
             async move { println!("Session Code: {code}"); Ok(CommandStatus::Done) }
         }))
-        .add("pn", pn)
+        .add("play-next", pn)
         .add("get-queue", queue)
-        .add("exit", exit)
         .build()
-        .expect("Failed to create repl");
+        .expect("Failed to create repl")
+        .run().await?;
 
-    repl.run().await.expect("REPL error");
-    // tokio::signal::ctrl_c().await;
+    Ok(())
 }

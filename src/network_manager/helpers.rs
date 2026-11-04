@@ -5,7 +5,6 @@ use crate::player::types::Song;
 use tokio::sync::{Mutex};
 use nowhear::Track;
 use std::sync::Arc;
-use tokio::io::{AsyncWriteExt};
 
 use futures_lite::StreamExt;
 use nowhear::{MediaEvent, MediaSource, MediaSourceBuilder, PlaybackState};
@@ -35,7 +34,6 @@ pub async fn listen_to_playback(broadcaster: Broadcaster, play_state: Arc<Mutex<
     while let Some(event) = stream.next().await {
         match event {
             MediaEvent::TrackChanged { player_name, track } => {
-                // println!("Track changed - Player: {:?}", &player_name);
                 if is_same_player(&target_player, &player_name) {
                     let song = make_song(track);
                     println!(
@@ -48,16 +46,11 @@ pub async fn listen_to_playback(broadcaster: Broadcaster, play_state: Arc<Mutex<
             }
 
             MediaEvent::StateChanged { player_name, state } => {
-                // println!("State changed - Player: {:?}", &player_name);
+                println!("State - {:?}", state);
                 if is_same_player(&target_player, &player_name) {
                     match state {
-                        PlaybackState::Stopped => broadcaster.broadcast(NetworkMessage::Message {
-                            msg: "Host has no media loaded. Standing by..".to_string(),
-                        }),
-                        _ => {
-                            broadcaster.broadcast(NetworkMessage::PlayPause);
-                            println!("Play/Pause");
-                        }
+                        PlaybackState::Playing => broadcaster.broadcast(NetworkMessage::Resume),
+                        _ => broadcaster.broadcast(NetworkMessage::Pause)
                     }
                 }
             }
@@ -130,23 +123,19 @@ pub async fn read(recv: &mut iroh::endpoint::RecvStream) -> anyhow::Result<Netwo
     Ok(NetworkMessage::from_bytes(&buf))
 }
 
-/// Process the receieved event
+/// Process the receieved event and return if the connection needs to be closed (ik its dumb for every NetworkMessage but it is what it is)
 pub async fn process_event(
     msg: NetworkMessage,
     play_state: &Arc<Mutex<PlayState>>,
-    writer: Option<&Arc<Mutex<iroh::endpoint::SendStream>>>,
-) {
+    writer: Option<&mut iroh::endpoint::SendStream>,
+)-> bool {
     let mut ps = play_state.lock().await;
 
     match msg {
-
-        NetworkMessage::Message { msg } => {
-            println!("[syncho] {}", msg)
-        }
-
         NetworkMessage::Seek { position } => {
             let pos: u64 = position.parse().unwrap();
             ps.seek(pos).await;
+            true
         }
 
         NetworkMessage::CurrentState { song } => {
@@ -160,35 +149,37 @@ pub async fn process_event(
                     println!("[syncho] Host is playing nothing right now");
                 }
             }
+            true
         }
 
         NetworkMessage::Play(song) => {
             ps.play(song).await;
-        }
-
-        NetworkMessage::PlayPause => {
-            ps.play_pause().await;
+            true
         }
 
         NetworkMessage::GetQueue => {
             let queue = ps.get_queue().await;
-            // let _ = send(&writer.unwrap().lock(), NetworkMessage::Queue { queue }).await;
+            let _ = send(&mut writer.unwrap(), NetworkMessage::Queue { queue }).await;
+            true
         }
 
         NetworkMessage::PlayNext(song) => {
             ps.play_next(song).await;
+            true
         }
 
         NetworkMessage::Queue { queue } => {
             for (index, song) in (1..).zip(queue.into_iter()) {
                 println!("{index} - {song}");
             }
+            true
         }
 
         NetworkMessage::Bye => {
-
+            writer.unwrap().finish();
+            false
         }
 
-        _ => {}
+        _ => {true}
     }
 }

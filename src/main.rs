@@ -8,12 +8,12 @@ use crate::{
     helpers::get_input, network_manager::{Broadcaster, ClientOp, NetworkManager, NetworkMessage, helpers::{listen_to_playback, read, send}}, player::types::{Config, PlayState}, repl::Role,
 };
 
-use iroh::{Endpoint, EndpointId, PublicKey, RelayUrl, endpoint::Connection};
+use iroh::{Endpoint, PublicKey};
 use serde::{Deserialize, Serialize};
 use clap::{Parser};
 use core::fmt;
 use std::{collections::{HashMap, HashSet}, str::FromStr, sync::Arc};
-use tokio::{sync::{Mutex, broadcast, mpsc::{self, Receiver}, oneshot}};
+use tokio::{sync::{Mutex, broadcast}};
 
 #[derive(Parser, Debug)]
 enum Command {
@@ -24,7 +24,7 @@ enum Command {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     const ALPN: &[u8] = b"syncho/0";
     let config = Config::get_config();
     let username = Config::get_username(&config);
@@ -63,8 +63,8 @@ async fn main() {
             let ticket_str = ticket.to_string();
             println!("Ticket: {} - len: {}", ticket, ticket_str.len());
 
-            repl::looper(ticket_str, Arc::clone(&play_state), Role::Host).await;
-            router.shutdown().await;
+            repl::looper(ticket_str, Arc::clone(&play_state), Role::Host).await?;
+            router.shutdown().await?;
         },
 
         Command::Join => {
@@ -91,9 +91,13 @@ async fn main() {
                         "".to_string()
                     }
                 };
-
                 println!("[syncho] Connected to Host: {}", host_name);
-
+                
+                repl::looper(ticket.to_string(), Arc::clone(&play_state), Role::Client { connection: conn.clone() }).await?;
+                
+                let (mut writer, reader) = conn.open_bi().await.unwrap();
+                network_manager::helpers::send(&mut writer, NetworkMessage::Bye).await?;
+                writer.finish()?;
 
                 conn.close(1u8.into(), b"client-exit");
 
@@ -103,6 +107,8 @@ async fn main() {
 
         }
     }
+
+    Ok(())
 }
 
 

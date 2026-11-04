@@ -179,13 +179,12 @@ impl CiderControl {
         self.cider.seek_ms(song.position).await
     }
 
-    pub async fn play_later(&self, song: &Song) -> Result<(), CiderError> {
-        let song_id = self.get_id(song).await.unwrap();
-        self.cider.play_later("songs", &song_id).await
+    pub async fn resume(&self) -> Result<(), CiderError> {
+        self.cider.play().await
     }
 
-    pub async fn play_pause(&self) -> Result<(), CiderError> {
-        self.cider.play_pause().await
+    pub async fn pause(&self) -> Result<(), CiderError> {
+        self.cider.pause().await
     }
 
     pub async fn play_next(&self, song: &Song) -> Result<(), CiderError> {

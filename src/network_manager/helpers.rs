@@ -104,6 +104,8 @@ pub async fn send(
     let payload = msg.to_bytes();
     let size = payload.len() as u32;
     
+    // println!("Writing size: {}", size);
+
     writer.write_all(&size.to_be_bytes()).await?; // Write the message size first
     writer.write_all(&payload).await?; // Write the actual message
 
@@ -115,11 +117,11 @@ pub async fn read(recv: &mut iroh::endpoint::RecvStream) -> anyhow::Result<Netwo
     recv.read_exact(&mut len).await?; // Get the message size first
     
     let len = u32::from_be_bytes(len) as usize;
+    // println!("Reading size - {}", len);
     anyhow::ensure!(len <= 1000, "frame too large");
     
     let mut buf = vec![0u8; len];
     recv.read_exact(&mut buf).await?; // Read the actual message
-    
     Ok(NetworkMessage::from_bytes(&buf))
 }
 

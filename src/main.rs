@@ -8,7 +8,7 @@ use crate::{
     helpers::get_input, network_manager::{Broadcaster, ClientOp, NetworkManager, NetworkMessage, helpers::{listen_to_playback, read, send}}, player::types::{Config, PlayState}, repl::Role,
 };
 
-use iroh::{Endpoint, PublicKey};
+use iroh::{Endpoint, PublicKey, endpoint::Connection};
 use serde::{Deserialize, Serialize};
 use clap::{Parser};
 use core::fmt;
@@ -91,15 +91,16 @@ async fn main() -> anyhow::Result<()> {
                         "".to_string()
                     }
                 };
+
                 println!("[syncho] Connected to Host: {}", host_name);
-                
-                repl::looper(ticket.to_string(), Arc::clone(&play_state), Role::Client { connection: conn.clone() }).await?;
-                
-                let (mut writer, reader) = conn.open_bi().await.unwrap();
-                network_manager::helpers::send(&mut writer, NetworkMessage::Bye).await?;
                 writer.finish()?;
 
-                conn.close(1u8.into(), b"client-exit");
+                let (mut writer, mut reader) = conn.open_bi().await.unwrap();
+                send(&mut writer, NetworkMessage::Bye ).await.unwrap();
+
+                conn.closed().await;
+                conn.close(1u8.into(), b"close");
+                
 
             } else {
                 println!("no ticket");
@@ -109,6 +110,14 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+async fn close_conn(conn: Connection) {
+    let (mut writer, reader) = conn.open_bi().await.unwrap();
+    send(&mut writer, NetworkMessage::Bye).await;
+    writer.finish();
+
+    conn.close(1u8.into(), b"client-exit");
 }
 
 

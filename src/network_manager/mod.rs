@@ -120,23 +120,22 @@ impl ProtocolHandler for NetworkManager {
             username.push_str(&client_name);
             println!("[syncho] {} joined", username);
             self.bc.send_client_event(ClientOp::Joined { id: connection.remote_id(), name: client_name, conn: connection.clone() });
-            greet_write.finish();
+            greet_write.finish()?;
         } else {
             connection.close(1u8.into(), b"Client did not send name");
             return Ok(());
         }
 
-        let mut command_write;
-        let mut command_read;
         loop {
-            (command_write, command_read) = connection.accept_bi().await?;
+            let (mut command_write, mut command_read) = connection.accept_bi().await?;
             let command = read(&mut command_read).await.unwrap();
-            if process_event(command, &self.play_state, Some(&mut command_write)).await {
+            println!("{:?}", command);
+            if !process_event(command, &self.play_state, Some(&mut command_write)).await {
                 break;
             }
         }
 
-        connection.closed().await;
+        connection.close(1u8.into(), b"bye");
         self.bc.send_client_event(ClientOp::Left { id: connection.remote_id() });
         Ok(())
     }
@@ -158,7 +157,7 @@ pub async fn handle_clients(mut rx: broadcast::Receiver<ClientOp>) {
                     used_names.insert(name.clone(), name_counter);
                     clients.insert(id, Client { name, conn });
                 }
-                ClientOp::Left { id } => { 
+                ClientOp::Left { id } => {
                     if let Some(client) = clients.remove(&id) {
                         println!("[syncho] {} left", client.name);
                     }

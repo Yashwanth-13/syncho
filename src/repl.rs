@@ -1,13 +1,12 @@
 use tokio::sync::Mutex;
 use mini_async_repl::{
-    CommandStatus, Repl, anyhow,
-    command::{Command, CommandArgInfo, ExecuteCommand},
+    anyhow,
 };
-use std::{future::Future};
-use std::pin::Pin;
-use std::sync::Arc;
 
-use crate::{helpers::{get_input}, player::types::PlayState};
+use std::{io::ErrorKind::ReadOnlyFilesystem, sync::Arc};
+
+use iroh::endpoint::Connection;
+use crate::{helpers::get_input, network_manager::helpers::{read}, player::types::PlayState};
 use crate::network_manager::{NetworkMessage, helpers::send};
 use crate::player::types::Song;
 
@@ -28,84 +27,79 @@ fn get_song() -> Song {
 #[derive(Clone)]
 pub enum Role {
     Host,
-    Client { connection: iroh::endpoint::Connection },
+    Client { connection: Connection },
 }
 
-struct FnCmd<F>(F);
-impl<F, Fut> ExecuteCommand for FnCmd<F>
-where
-    F: FnMut() -> Fut,
-    Fut: Future<Output = anyhow::Result<CommandStatus>> + 'static,
-{
-    fn execute(
-        &mut self,
-        _args: Vec<String>,
-        _info: Vec<CommandArgInfo>,
-    ) -> Pin<Box<dyn Future<Output = anyhow::Result<CommandStatus>> + '_>> {
-        Box::pin((self.0)())
+fn print_queue(queue: Vec<String>) {
+    if queue.len() == 0 {
+        println!("[syncho] Empty queue");
+        return;
+    }
+
+    for (index, song) in queue.iter().enumerate() {
+        println!("{} - {}", index+1, song);
     }
 }
 
-fn cmd<F, Fut>(desc: &str, f: F) -> Command
-where
-    F: FnMut() -> Fut + 'static,
-    Fut: Future<Output = anyhow::Result<CommandStatus>> + 'static,
-{
-    Command::new(desc, vec![], Box::new(FnCmd(f)))
+async fn get_queue(ps: &Arc<Mutex<PlayState>>, role: &Role) -> anyhow::Result<()> {
+    let queue = match role {
+        Role::Host => {ps.lock().await.get_queue().await},
+
+        Role::Client { connection } => {
+            let (mut writer, mut reader) = connection.open_bi().await?;
+            let _ = send(&mut writer, NetworkMessage::GetQueue).await;
+
+            let message = read(&mut reader).await.unwrap();
+            let queue = match message {
+                NetworkMessage::Queue { queue } => {queue},
+
+                _ => vec![]
+            };
+            
+            queue
+        }
+    };
+
+    print_queue(queue);
+
+    Ok(())
+}
+
+async fn play_next(ps: &Arc<Mutex<PlayState>>, role: &Role) -> anyhow::Result<()> {
+    let song = get_song();
+    match role {
+        Role::Host => {ps.lock().await.play_next(song).await},
+        Role::Client { connection } => {
+            let (mut writer, mut reader) = connection.open_bi().await?;
+            let _ = send(&mut writer, NetworkMessage::PlayNext(song)).await;
+        }
+    }
+
+    Ok(())
 }
 
 pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) -> anyhow::Result<()> {
-    let pn = {
-        let (ps, role) = (ps.clone(), role.clone());
-        cmd("Play a song next (if you are the listener, request the host to play a song next instead)", move || {
-            let (ps, role) = (ps.clone(), role.clone());
-            async move {
-                let song = tokio::task::block_in_place(get_song);
-                match role {
-                    Role::Host { .. } => ps.lock().await.play_next(song).await,
-                    Role::Client { connection } => {
-                        let (mut writer, reader) = connection.open_bi().await.unwrap();
-                        let _ = send(&mut writer, NetworkMessage::PlayNext(song)).await;
-                        writer.finish()?;
-                    }
-                }
-                Ok(CommandStatus::Done)
+    let queue_getter = ["gq", "get-queue"];
+    let next_player = ["pn", "play-next"];
+
+    loop {
+        let command = get_input("Command", true);
+
+        for item in queue_getter {
+            if item.eq(&command) {
+                let _ = get_queue(&ps, &role).await;
             }
-        })
-    };
+        }
 
-    let queue = {
-        let (ps, role) = (ps.clone(), role.clone());
-        cmd("Get the song queue (if you are the listener, it wil be the host's queue)", move || {
-            let (ps, role) = (ps.clone(), role.clone());
-            async move {
-                match role {
-                    Role::Host { .. } => {
-                        for (i, s) in ps.lock().await.get_queue().await.iter().enumerate() {
-                            println!("{} - {s}", i + 1);
-                        }
-                    }
-                    Role::Client { connection } => {
-                        let (mut writer, reader) = connection.open_bi().await.unwrap();
-                        let _ = send(&mut writer, NetworkMessage::GetQueue).await;
-                        writer.finish()?;
-                    }
-                }
-                Ok(CommandStatus::Done)
+        for item in next_player {
+            if item.eq(&command) {
+                let _ = play_next(&ps, &role).await;
             }
-        })
-    };
+        }
 
-    let mut repl = Repl::builder()
-        .add("code", cmd("Print the code", move || {
-            let code = code.clone();
-            async move { println!("Session Code: {code}"); Ok(CommandStatus::Done) }
-        }))
-        .add("play-next", pn)
-        .add("get-queue", queue)
-        .build()
-        .expect("Failed to create repl")
-        .run().await?;
+        if command.eq("code") {println!("{}", code)};
 
+        if command.eq("exit") || command.eq("quit") {break}
+    }
     Ok(())
 }

@@ -7,12 +7,12 @@ pub fn get_input(prompt_string: &str, allow_empty: bool) -> String {
             .allow_empty(true)
             .with_prompt(prompt_string)
             .interact_text()
-            .unwrap()
+            .unwrap_or("".to_string())
     } else {
         Input::new()
             .with_prompt(prompt_string)
             .interact_text()
-            .unwrap()
+            .unwrap_or("".to_string())
     }
 }
 

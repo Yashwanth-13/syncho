@@ -3,7 +3,7 @@ use mini_async_repl::{
     anyhow,
 };
 
-use std::{io::ErrorKind::ReadOnlyFilesystem, sync::Arc};
+use std::{sync::Arc};
 
 use iroh::endpoint::Connection;
 use crate::{helpers::get_input, network_manager::helpers::{read}, player::types::PlayState};

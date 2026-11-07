@@ -5,7 +5,7 @@ mod player;
 mod repl;
 
 use crate::{
-    helpers::get_input, network_manager::{Broadcaster, ClientOp, NetworkManager, NetworkMessage, helpers::{listen_to_playback, read, send}}, player::types::{Config, PlayState}, repl::Role,
+    helpers::get_input, network_manager::{Broadcaster, ClientOp, NetworkManager, NetworkMessage, helpers::{listen_to_playback, read, send}}, player::types::{Config, PlayState}, repl::{Role, looper},
 };
 
 use iroh::{Endpoint, PublicKey, endpoint::Connection};
@@ -93,6 +93,8 @@ async fn main() -> anyhow::Result<()> {
 
                 println!("[syncho] Connected to Host: {}", host_name);
                 writer.finish()?;
+
+                let _ = looper(code, play_state, Role::Client { connection: conn.clone() }).await;
 
                 let (mut writer, mut reader) = conn.open_bi().await.unwrap();
                 send(&mut writer, NetworkMessage::Bye ).await.unwrap();

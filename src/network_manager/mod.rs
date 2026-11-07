@@ -80,14 +80,14 @@ pub struct NetworkManager {
 
 
 impl NetworkManager {
-
+    /// Exchanges names with the new client
     async fn greet( &self, reader: &mut iroh::endpoint::RecvStream, writer: &mut iroh::endpoint::SendStream,curr_song_state: NetworkMessage ) -> Result<String, anyhow::Error> {
         let message = read(reader).await.unwrap();
 
         match message {
             NetworkMessage::LetMeIn { name } => {
                 send(writer, NetworkMessage::Welcome { name: self.name.clone() }).await?;
-                send(writer, curr_song_state.clone()).await?;
+                send(writer, curr_song_state).await?;
                 return Ok(name);
             },
 
@@ -96,6 +96,51 @@ impl NetworkManager {
             }
         };
         
+    }
+
+    /// Listener to client's NetworkMessages
+    async fn listen_to_client(&self, connection: &Connection) -> anyhow::Result<()> {
+        loop {
+            let (mut command_write, mut command_read) = connection.accept_bi().await?;
+            let command = read(&mut command_read).await.unwrap();
+            println!("{:?}", command);
+            if !process_event(command, &self.play_state, Some(&mut command_write)).await {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// Listener to broadcasted playback events
+    async fn forward_events(&self, connection: &Connection) -> anyhow::Result<()>{
+        let mut receiver = self.bc.tx.subscribe();
+        while let Ok(msg) = receiver.recv().await {
+            let mut writer = connection.open_uni().await.unwrap();
+            send(&mut writer, msg.clone()).await?;
+
+            match msg {
+                NetworkMessage::Bye => {
+                    connection.closed().await;
+                    break;
+                },
+
+                _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Listener to host's NetworkMessages
+    pub async fn listen_events(connection: &Connection, play_state: &Arc<Mutex<PlayState>>) -> anyhow::Result<()>{
+        while let Ok(mut recv) = connection.accept_uni().await {
+            let message = read(&mut recv).await?;
+            if !process_event(message, play_state, None).await {
+                break;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -116,27 +161,26 @@ impl ProtocolHandler for NetworkManager {
 
         let (mut greet_write, mut greet_read) = connection.accept_bi().await?;
         let result = self.greet(&mut greet_read, &mut greet_write, message).await;
+        
         if let Ok(client_name) = result {
             username.push_str(&client_name);
             println!("[syncho] {} joined", username);
             self.bc.send_client_event(ClientOp::Joined { id: connection.remote_id(), name: client_name, conn: connection.clone() });
             greet_write.finish()?;
         } else {
-            connection.close(1u8.into(), b"Client did not send name");
+            connection.close(1u8.into(), b"client-no-name");
             return Ok(());
         }
 
-        loop {
-            let (mut command_write, mut command_read) = connection.accept_bi().await?;
-            let command = read(&mut command_read).await.unwrap();
-            println!("{:?}", command);
-            if !process_event(command, &self.play_state, Some(&mut command_write)).await {
-                break;
-            }
+        tokio::select! {
+            _ = self.forward_events(&connection) => {}
+            _ = self.listen_to_client(&connection) => {
+                connection.close(1u8.into(), b"bye");
+                self.bc.send_client_event(ClientOp::Left { id: connection.remote_id() });
+            },
         }
 
-        connection.close(1u8.into(), b"bye");
-        self.bc.send_client_event(ClientOp::Left { id: connection.remote_id() });
+        
         Ok(())
     }
 }

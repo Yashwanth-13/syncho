@@ -8,7 +8,7 @@ use crate::{
     helpers::get_input, network_manager::{Broadcaster, ClientOp, NetworkManager, NetworkMessage, helpers::{listen_to_playback, read, send}}, player::types::{Config, PlayState}, repl::{Role, looper},
 };
 
-use iroh::{Endpoint, PublicKey, endpoint::Connection};
+use iroh::{Endpoint, PublicKey};
 use serde::{Deserialize, Serialize};
 use clap::{Parser};
 use core::fmt;
@@ -94,15 +94,17 @@ async fn main() -> anyhow::Result<()> {
                 println!("[syncho] Connected to Host: {}", host_name);
                 writer.finish()?;
 
-                let _ = looper(code, play_state, Role::Client { connection: conn.clone() }).await;
-
-                let (mut writer, mut reader) = conn.open_bi().await.unwrap();
-                send(&mut writer, NetworkMessage::Bye ).await.unwrap();
-
-                conn.closed().await;
-                conn.close(1u8.into(), b"close");
-                
-
+                // Receiver of the final message closes the connection and the sender awaits the closure.
+                tokio::select! {
+                    _ = looper(code, play_state.clone(), Role::Client { connection: conn.clone() }) => {
+                        let (mut writer, mut reader) = conn.open_bi().await.unwrap();
+                        send(&mut writer, NetworkMessage::Bye ).await.unwrap();
+                        conn.closed().await; // We are the sender here
+                    },
+                    _ = NetworkManager::listen_events(&conn, &play_state) => {
+                        conn.close(1u8.into(), b"host-close"); // We are the receiver here
+                    }
+                };
             } else {
                 println!("no ticket");
             }
@@ -112,15 +114,6 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
-async fn close_conn(conn: Connection) {
-    let (mut writer, reader) = conn.open_bi().await.unwrap();
-    send(&mut writer, NetworkMessage::Bye).await;
-    writer.finish();
-
-    conn.close(1u8.into(), b"client-exit");
-}
-
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Ticket {

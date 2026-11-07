@@ -124,7 +124,7 @@ pub async fn read(recv: &mut iroh::endpoint::RecvStream) -> anyhow::Result<Netwo
     Ok(NetworkMessage::from_bytes(&buf))
 }
 
-/// Process the receieved event and return if the connection needs to be closed (ik its dumb for every NetworkMessage but it is what it is)
+/// Process the receieved event and return if the connection needs to be kept alive (kinda dumb for every NetworkMessage but it is what it is)
 pub async fn process_event(
     msg: NetworkMessage,
     play_state: &Arc<Mutex<PlayState>>,

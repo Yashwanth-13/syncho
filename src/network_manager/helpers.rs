@@ -165,7 +165,7 @@ pub async fn process_event(
         }
 
         NetworkMessage::Pause => {
-            println!("[syncho] Host resume");
+            println!("[syncho] Host pause");
             ps.pause().await;
             true
         }

@@ -120,7 +120,7 @@ impl PlayState {
 
     pub async fn resume(&mut self) {
         if !self.can_call_player().await {
-            println!("[syncho] Play/Pause - Your player is not running.");
+            println!("[syncho] Resume - Your player is not running.");
             return;
         };
 
@@ -140,7 +140,7 @@ impl PlayState {
 
     pub async fn pause(&mut self) {
         if !self.can_call_player().await {
-            println!("[syncho] Play/Pause - Your player is not running.");
+            println!("[syncho] Pause - Your player is not running.");
             return;
         };
 

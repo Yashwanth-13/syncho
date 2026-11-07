@@ -142,7 +142,6 @@ impl ProtocolHandler for NetworkManager {
 }
 
 pub async fn handle_clients(mut rx: broadcast::Receiver<ClientOp>) {
-    println!("task started");
     let mut clients = HashMap::new();
     let mut used_names = HashMap::<String, u32>::new();
     loop {
@@ -182,7 +181,6 @@ pub async fn handle_clients(mut rx: broadcast::Receiver<ClientOp>) {
                 }
             }
         } else {
-            println!("task dropped");
             return;
         }
     };

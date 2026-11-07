@@ -46,7 +46,6 @@ pub async fn listen_to_playback(broadcaster: Broadcaster, play_state: Arc<Mutex<
             }
 
             MediaEvent::StateChanged { player_name, state } => {
-                println!("State - {:?}", state);
                 if is_same_player(&target_player, &player_name) {
                     match state {
                         PlaybackState::Playing => broadcaster.broadcast(NetworkMessage::Resume),
@@ -156,6 +155,18 @@ pub async fn process_event(
 
         NetworkMessage::Play(song) => {
             ps.play(song).await;
+            true
+        }
+
+        NetworkMessage::Resume => {
+            println!("[syncho] Host resume");
+            ps.resume().await;
+            true
+        }
+
+        NetworkMessage::Pause => {
+            println!("[syncho] Host resume");
+            ps.pause().await;
             true
         }
 

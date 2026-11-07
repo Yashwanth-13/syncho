@@ -52,7 +52,6 @@ async fn main() -> anyhow::Result<()> {
             .spawn();
             
             router.endpoint().online().await;
-            println!("Endpoint is online..");
             let endpoint_addr =  router.endpoint().addr();
             
             let ticket = {

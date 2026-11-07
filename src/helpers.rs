@@ -2,18 +2,7 @@ use dialoguer::Input;
 use crate::player::types::Song;
 
 pub fn get_input(prompt_string: &str, allow_empty: bool) -> String {
-    if allow_empty {
-        Input::new()
-            .allow_empty(true)
-            .with_prompt(prompt_string)
-            .interact_text()
-            .unwrap_or("".to_string())
-    } else {
-        Input::new()
-            .with_prompt(prompt_string)
-            .interact_text()
-            .unwrap_or("".to_string())
-    }
+    Input::new().allow_empty(allow_empty).with_prompt(prompt_string).interact_text().unwrap_or("".to_string())
 }
 
 pub fn format_song(song: &Song) -> String {

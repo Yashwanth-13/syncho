@@ -83,7 +83,7 @@ pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) -> anyh
     let next_player = ["pn", "play-next"];
 
     loop {
-        let command = get_input("Command", true);
+        let command = get_input(">", true);
 
         for item in queue_getter {
             if item.eq(&command) {

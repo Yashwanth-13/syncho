@@ -14,7 +14,7 @@ pub fn is_same_player(target_player: &String, current_player: &str) -> bool {
 }
 
 
-// Listens to playback events
+/// Listens to playback events
 pub async fn listen_to_playback(broadcaster: Broadcaster, play_state: Arc<Mutex<PlayState>>) {
     let source = MediaSourceBuilder::new().build().await.unwrap();
     let mut stream= source.event_stream().await.unwrap();
@@ -104,20 +104,20 @@ pub async fn send(
     let size = payload.len() as u32;
     
     // println!("Writing size: {}", size);
-
     writer.write_all(&size.to_be_bytes()).await?; // Write the message size first
     writer.write_all(&payload).await?; // Write the actual message
 
     Ok(())
 }
 
+/// Reads from the given stream and returns a 
 pub async fn read(recv: &mut iroh::endpoint::RecvStream) -> anyhow::Result<NetworkMessage> {
     let mut len = [0u8; 4];
     recv.read_exact(&mut len).await?; // Get the message size first
     
     let len = u32::from_be_bytes(len) as usize;
     // println!("Reading size - {}", len);
-    anyhow::ensure!(len <= 1000, "frame too large");
+    anyhow::ensure!(len <= 2000, "frame too large");
     
     let mut buf = vec![0u8; len];
     recv.read_exact(&mut buf).await?; // Read the actual message

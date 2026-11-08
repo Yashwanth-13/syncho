@@ -11,9 +11,9 @@ use crate::network_manager::{NetworkMessage, helpers::send};
 use crate::player::types::Song;
 
 fn get_song() -> Song {
-    let song_name = get_input(&"Song name".to_string(), false);
-    let artist_name = get_input(&"Artist Name".to_string(), true);
-    let album_name = get_input(&"Album Name".to_string(), true);
+    let song_name = get_input(&"--> Song name".to_string(), false);
+    let artist_name = get_input(&"--> Artist Name".to_string(), true);
+    let album_name = get_input(&"--> Album Name".to_string(), true);
 
     Song {
         song_name,

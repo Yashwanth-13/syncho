@@ -43,6 +43,7 @@ struct SongAttributes {
 }
 
 impl CiderControl {
+
     pub fn new(token: &String) -> CiderControl {
         CiderControl {
             cider: CiderClient::new().with_token(token),
@@ -53,6 +54,8 @@ impl CiderControl {
         // Combining Diacritical Marks block: U+0300–U+036F
         matches!(c, '\u{0300}'..='\u{036F}')
     }
+
+    // Lowercases and strips the names
     fn normalize(s: &str) -> String {
         let deaccented: String = s
             .nfd()
@@ -79,6 +82,7 @@ impl CiderControl {
         }
     }
 
+    /// Scores a song against a target song using `Levenshtein` 
     fn score_candidate(
         candidate: &SongAttributes,
         target_song: &str,
@@ -101,6 +105,7 @@ impl CiderControl {
         min_song_changes * 0.4 + min_artist_changes * 0.45 + min_album_changes * 0.15
     }
 
+    /// Gets a song that is the closest to the target song
     fn find_best_match(json_str: &str, song: &Song) -> Option<String> {
         let parsed: SearchResponse = serde_json::from_str(json_str).ok()?;
 
@@ -125,6 +130,7 @@ impl CiderControl {
             .map(|(entry, _)| entry.id.clone())
     }
 
+    /// Fetches the Apple Music Song ID of the song closest to the given one
     async fn get_id(&self, song: &Song) -> Option<String> {
         let encoded_song: String =
             form_urlencoded::byte_serialize(song.song_name.as_bytes()).collect();
@@ -152,6 +158,7 @@ impl CiderControl {
         }
     }
 
+    /// Fetches current playing song in `Cider`
     pub async fn get_current_song(&self) -> Option<Song> {
         if let Ok(track) = self.cider.now_playing().await {
             match track {
@@ -169,40 +176,92 @@ impl CiderControl {
         }
     }
 
+    /// Wrapper to seek song position
     pub async fn seek(&self, new_positon: u64) {
         let _ = self.cider.seek_ms(new_positon).await;
     }
 
+    /// Plays a specific song
     pub async fn play(&self, song: &Song) -> Result<(), CiderError> {
         let song_id = self.get_id(song).await.unwrap();
         let _ = self.cider.play_item("songs", &song_id).await;
         self.cider.seek_ms(song.position).await
     }
 
+    /// Wrapper to resume music
     pub async fn resume(&self) -> Result<(), CiderError> {
         self.cider.play().await
     }
 
+    /// Wrapper to pause music
     pub async fn pause(&self) -> Result<(), CiderError> {
         self.cider.pause().await
     }
 
+    /// Adds a song to the queue
     pub async fn play_next(&self, song: &Song) -> Result<(), CiderError> {
         let song_id = self.get_id(song).await.unwrap();
         self.cider.play_next("songs", &song_id).await
     }
 
+    /// Fetches the next 10 songs in the queue (current + next 9)
     pub async fn get_queue(&self) -> Vec<String> {
         let queue = self.cider.get_queue().await.unwrap();
-        let mut songs: Vec<String> = Vec::new();
-        for i in queue {
-            let attr = i.attributes.unwrap();
-            songs.push(format!(
-                "{} by {} from {}",
-                attr.name, attr.artist_name, attr.album_name
-            ));
-        }
+        let now_playing_result = self.cider.now_playing().await;
 
-        songs
+        match now_playing_result {
+            Ok(Some(song)) => {
+
+                // This is the song we need to find in the queue and build a list from
+                let target = Song {
+                    song_name: song.name,
+                    artist_name: song.artist_name,
+                    album_name: song.album_name,
+                    position: 0
+                };
+
+                let mut songs: Vec<String> = Vec::new(); // List of upcoming songs
+                let mut got_current = false;
+                let mut queue_size = 0;
+                for i in queue {
+                    let attr = i.attributes.unwrap();
+                    let attr_clone = attr.clone();
+                    let queue_item = Song{
+                        song_name: attr_clone.name,
+                        artist_name:attr_clone.artist_name,
+                        album_name: attr_clone.album_name,
+                        position: 0
+                    };
+
+                    // Check if we already got the current song from past queue items
+                    if !got_current {
+                        got_current = CiderControl::is_same(&target, &queue_item); // Check if the current queue item is the current song
+                    }
+
+                    // Check again since the current queue item might have matched
+                    // Also limit the queue size to be 10 
+                    if got_current && queue_size < 10 {
+                        let formatted = format!(
+                            "{} by {} from {}",
+                            attr.name, attr.artist_name, attr.album_name
+                        );
+                        
+                        songs.push(formatted);
+                        queue_size += 1;
+                    }
+                }
+
+                songs
+            }
+
+            _ => {vec![]}
+        }
+    }
+
+    /// Returns if two songs are the same
+    fn is_same(a: &Song, b: &Song) -> bool {
+        (a.song_name.eq(&b.song_name)) & 
+        (a.artist_name.eq(&b.artist_name)) & 
+        (a.album_name.eq(&b.album_name))
     }
 }

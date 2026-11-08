@@ -5,7 +5,7 @@ use crate::helpers::format_song;
 
 impl PlayState {
     
-    // PlayState constructor
+    /// PlayState constructor. Returns an object to control `Player::Cider` or a `Player::Spotify`.
     pub async fn new(config: &Config) -> Self {
         let player = match config {
             Config::Cider {token, ..} => Player::Cider(CiderControl::new(token)),
@@ -24,11 +24,11 @@ impl PlayState {
                 access_token.clone(),
             )),
         };
-        
 
         PlayState { player, player_online: false }
     }
 
+    /// Returns the player as a `String`
     pub fn get_player_str(&self) -> String {
         match self.player {
             Player::Cider(_) => "cider".to_string(),
@@ -36,14 +36,17 @@ impl PlayState {
         }
     }
 
+    /// Checks if the target player's `API`s can be called
     pub fn update_player_status(&mut self, status: bool) {
         self.player_online = status;
     }
 
+    /// Checks if the target player's `API`s can be called
     async fn can_call_player(&self) -> bool {
         self.player_online
     }
 
+    /// Fetches the current playing song
     pub async fn get_current_song(&mut self) -> Option<Song> {
         if !self.can_call_player().await {
             println!("[syncho] Your player is not running.");
@@ -74,7 +77,7 @@ impl PlayState {
         }
     }
 
-    // Song seek
+    /// Song seek
     pub async fn seek(&mut self, new_position: u64) {
         if !self.can_call_player().await {
             println!("[syncho] Your player is not running. Cannot seek");
@@ -94,7 +97,7 @@ impl PlayState {
         }
     }
 
-    // Plays the given song
+    /// Plays a given song
     pub async fn play(&mut self, song: Song) {
         let formatted_song = format_song(&song);
         if !self.can_call_player().await {
@@ -118,6 +121,7 @@ impl PlayState {
         }
     }
 
+    /// Resumes song
     pub async fn resume(&mut self) {
         if !self.can_call_player().await {
             println!("[syncho] Resume - Your player is not running.");
@@ -138,6 +142,7 @@ impl PlayState {
         }
     }
 
+    /// Pauses song
     pub async fn pause(&mut self) {
         if !self.can_call_player().await {
             println!("[syncho] Pause - Your player is not running.");
@@ -180,7 +185,7 @@ impl PlayState {
         }
     }
 
-    // Gets the player's queue
+    /// Gets the player's queue
     pub async fn get_queue(&mut self) -> Vec<String> {
         if !self.can_call_player().await {
             println!("[syncho] Your player is not running. Cannot fetch queue");

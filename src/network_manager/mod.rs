@@ -28,16 +28,13 @@ pub enum NetworkMessage {
 }
 
 impl NetworkMessage {
-    pub fn to_wire(&self) -> String {
-        let mut s = serde_json::to_string(self).expect("serialization is infallible");
-        s.push('\n');
-        s
-    }
 
+    /// Deserializes a [`NetworkMessage`] from a JSON byte vector with `serde_json`
     pub fn from_bytes(bytes: &[u8]) -> Self {
         serde_json::from_slice(bytes).unwrap()
     }
 
+    /// Serializes a [`NetworkMessage`] into a JSON byte vector with `serde_json`
     pub fn to_bytes(&self) -> Vec<u8> {
         serde_json::to_vec(self).expect("serde_json::to_vec is infallible")
     }
@@ -70,7 +67,7 @@ pub enum ClientOp {
     Kick { id: EndpointId },
 }
 
-
+/// The `NetworkManager` holds channels to 
 #[derive(Debug, Clone)]
 pub struct NetworkManager {
     pub name: String,
@@ -80,6 +77,7 @@ pub struct NetworkManager {
 
 
 impl NetworkManager {
+
     /// Exchanges names with the new client
     async fn greet( &self, reader: &mut iroh::endpoint::RecvStream, writer: &mut iroh::endpoint::SendStream,curr_song_state: NetworkMessage ) -> Result<String, anyhow::Error> {
         let message = read(reader).await.unwrap();
@@ -103,7 +101,7 @@ impl NetworkManager {
         loop {
             let (mut command_write, mut command_read) = connection.accept_bi().await?;
             let command = read(&mut command_read).await.unwrap();
-            println!("{:?}", command);
+            // println!("{:?}", command);
             if !process_event(command, &self.play_state, Some(&mut command_write)).await {
                 break;
             }
@@ -180,7 +178,7 @@ impl ProtocolHandler for NetworkManager {
             },
         }
 
-        
+
         Ok(())
     }
 }

@@ -134,8 +134,7 @@ impl Ticket {
     }
 }
 
-// The `Display` trait allows us to use the `to_string`
-// method on `Ticket`.
+// The `Display` trait allows us to use the `to_string` method on `Ticket`.
 impl fmt::Display for Ticket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut text = data_encoding::BASE32_NOPAD.encode(&self.to_bytes()[..]);
@@ -144,8 +143,7 @@ impl fmt::Display for Ticket {
     }
 }
 
-// The `FromStr` trait allows us to turn a `str` into
-// a `Ticket`
+// The `FromStr` trait allows us to turn a `str` into a `Ticket`
 impl FromStr for Ticket {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {

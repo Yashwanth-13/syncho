@@ -16,16 +16,14 @@ pub fn is_same_player(target_player: &String, current_player: &str) -> bool {
 pub async fn player_watcher(play_state: Arc<Mutex<PlayState>>) {
     let source = MediaSourceBuilder::new().build().await.unwrap();
     let mut stream= source.event_stream().await.unwrap();
-    
+
     let target_player = play_state.lock().await.get_player_str();
     match source.get_player(&target_player).await {
         Ok(player) => {
-            println!("detected - {}", target_player);
             play_state.lock().await.update_player_status(true);
         }, // Our music player is running
         
         Err(_) => {
-            println!("did not detect - {}", target_player);
             play_state.lock().await.update_player_status(false);
         } // Our music player is not open
     };    

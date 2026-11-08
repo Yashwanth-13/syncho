@@ -72,6 +72,8 @@ async fn main() -> anyhow::Result<()> {
         },
 
         Command::Join => {
+            // Task to keep track of the player status
+            tokio::spawn(player_watcher(play_state.clone()));
             let code = get_input(&"Get the ticket".to_string(), false);
             if let Ok(ticket) = Ticket::from_str(&code) {
                 let ep_addr = ticket.endpoint_id;
@@ -101,9 +103,6 @@ async fn main() -> anyhow::Result<()> {
 
                 println!("[syncho] Connected to Host: {}", host_name);
                 writer.finish()?;
-
-                // Task to keep track of the player status
-                tokio::spawn(player_watcher(play_state.clone()));
                 
                 let mut set = tokio::task::JoinSet::new();
                 set.spawn(looper(code, play_state.clone(), Role::Client { connection: conn.clone() }));

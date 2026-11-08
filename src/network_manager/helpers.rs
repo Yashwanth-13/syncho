@@ -13,23 +13,49 @@ pub fn is_same_player(target_player: &String, current_player: &str) -> bool {
     current_player.to_lowercase().contains(target_player)
 }
 
+pub async fn player_watcher(play_state: Arc<Mutex<PlayState>>) {
+    let source = MediaSourceBuilder::new().build().await.unwrap();
+    let mut stream= source.event_stream().await.unwrap();
+    
+    let target_player = play_state.lock().await.get_player_str();
+    match source.get_player(&target_player).await {
+        Ok(player) => {
+            println!("detected - {}", target_player);
+            play_state.lock().await.update_player_status(true);
+        }, // Our music player is running
+        
+        Err(_) => {
+            println!("did not detect - {}", target_player);
+            play_state.lock().await.update_player_status(false);
+        } // Our music player is not open
+    };    
+
+    while let Some(event) = stream.next().await {
+        match event {
+            MediaEvent::PlayerAdded { 
+                player_name 
+            } if is_same_player(&target_player, &player_name) => {
+                play_state.lock().await.update_player_status(true); // Set the player state to available
+            }
+            
+            MediaEvent::PlayerRemoved { 
+                player_name 
+            } if is_same_player(&target_player, &player_name) => {
+                play_state.lock().await.update_player_status(false); // Set the player state to not available
+            }
+
+            _ => {}
+        }
+    }
+}
 
 /// Listens to playback events
 pub async fn listen_to_playback(broadcaster: Broadcaster, play_state: Arc<Mutex<PlayState>>) {
     let source = MediaSourceBuilder::new().build().await.unwrap();
     let mut stream= source.event_stream().await.unwrap();
-
     let target_player = play_state.lock().await.get_player_str();
-    match source.get_player(&target_player).await {
-        Ok(player) => {
-            play_state.lock().await.update_player_status(true);
-        }, // Our music player is running
-        
-        Err(_) => {
-            play_state.lock().await.update_player_status(false);
-        } // Our music player is not open
-    };
 
+    
     // Do something only when the state change is from our player
     while let Some(event) = stream.next().await {
         match event {
@@ -103,7 +129,7 @@ pub async fn send(
     let payload = msg.to_bytes();
     let size = payload.len() as u32;
     
-    // println!("Writing size: {}", size);
+    println!("Writing size: {}", size);
     writer.write_all(&size.to_be_bytes()).await?; // Write the message size first
     writer.write_all(&payload).await?; // Write the actual message
 
@@ -116,7 +142,7 @@ pub async fn read(recv: &mut iroh::endpoint::RecvStream) -> anyhow::Result<Netwo
     recv.read_exact(&mut len).await?; // Get the message size first
     
     let len = u32::from_be_bytes(len) as usize;
-    // println!("Reading size - {}", len);
+    println!("Reading size - {}", len);
     anyhow::ensure!(len <= 2000, "frame too large");
     
     let mut buf = vec![0u8; len];

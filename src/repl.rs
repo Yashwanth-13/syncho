@@ -78,7 +78,7 @@ async fn play_next(ps: &Arc<Mutex<PlayState>>, role: &Role) -> anyhow::Result<()
     Ok(())
 }
 
-pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) -> anyhow::Result<()> {
+pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) -> anyhow::Result<(u8)> {
     let queue_getter = ["gq", "get-queue"];
     let next_player = ["pn", "play-next"];
 
@@ -101,5 +101,5 @@ pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) -> anyh
 
         if command.eq("exit") || command.eq("quit") {break}
     }
-    Ok(())
+    Ok(1)
 }

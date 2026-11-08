@@ -5,14 +5,14 @@ mod player;
 mod repl;
 
 use crate::{
-    helpers::get_input, network_manager::{Broadcaster, ClientOp, NetworkManager, NetworkMessage, helpers::{listen_to_playback, read, send}}, player::types::{Config, PlayState}, repl::{Role, looper},
+    helpers::get_input, network_manager::{Broadcaster, ClientOp, NetworkManager, NetworkMessage, helpers::{listen_to_playback, player_watcher, process_event, read, send}}, player::types::{Config, PlayState}, repl::{Role, looper},
 };
 
 use iroh::{Endpoint, PublicKey};
 use serde::{Deserialize, Serialize};
 use clap::{Parser};
 use core::fmt;
-use std::{collections::{HashMap, HashSet}, str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc};
 use tokio::{sync::{Mutex, broadcast}};
 
 #[derive(Parser, Debug)]
@@ -37,8 +37,13 @@ async fn main() -> anyhow::Result<()> {
             let (tx, _) = broadcast::channel::<NetworkMessage>(64);
             let (tx_client, rx_clients) = broadcast::channel::<ClientOp>(5);
             let broadcaster = Broadcaster { tx, tx_client };
-            tokio::spawn(listen_to_playback(broadcaster.clone(), Arc::clone(&play_state))); // Task to process playback events
             
+            // Task to process playback events
+            tokio::spawn(listen_to_playback(broadcaster.clone(), Arc::clone(&play_state)));
+            
+            // Task to keep track of the player status
+            tokio::spawn(player_watcher(play_state.clone()));
+
             // Task to handle client list
             tokio::spawn(network_manager::handle_clients(rx_clients));
 
@@ -90,21 +95,33 @@ async fn main() -> anyhow::Result<()> {
                         "".to_string()
                     }
                 };
+                
+                let curr_song = read(&mut reader).await.unwrap();
+                process_event(curr_song, &play_state, None).await;
 
                 println!("[syncho] Connected to Host: {}", host_name);
                 writer.finish()?;
 
-                // Receiver of the final message closes the connection and the sender awaits the closure.
-                tokio::select! {
-                    _ = looper(code, play_state.clone(), Role::Client { connection: conn.clone() }) => {
+                // Task to keep track of the player status
+                tokio::spawn(player_watcher(play_state.clone()));
+                
+                let mut set = tokio::task::JoinSet::new();
+                set.spawn(looper(code, play_state.clone(), Role::Client { connection: conn.clone() }));
+                set.spawn(NetworkManager::listen_events(conn.clone(), play_state.clone()));
+                
+                if let Some(Ok(Ok(id))) = set.join_next().await {
+                    set.abort_all();
+                    if id == 1 {
                         let (mut writer, mut reader) = conn.open_bi().await.unwrap();
                         send(&mut writer, NetworkMessage::Bye ).await.unwrap();
                         conn.closed().await; // We are the sender here
-                    },
-                    _ = NetworkManager::listen_events(&conn, &play_state) => {
+                    } else {
                         conn.close(1u8.into(), b"host-close"); // We are the receiver here
                     }
-                };
+                } else {
+                    conn.close(1u8.into(), b"err"); // Something happened
+                }
+
             } else {
                 println!("no ticket");
             }

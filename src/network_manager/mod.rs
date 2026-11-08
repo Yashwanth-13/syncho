@@ -113,9 +113,11 @@ impl NetworkManager {
     async fn forward_events(&self, connection: &Connection) -> anyhow::Result<()>{
         let mut receiver = self.bc.tx.subscribe();
         while let Ok(msg) = receiver.recv().await {
+            println!("Got a bc msg: {:?}", msg);
             let mut writer = connection.open_uni().await.unwrap();
             send(&mut writer, msg.clone()).await?;
-
+            writer.stopped();
+            writer.finish()?;
             match msg {
                 NetworkMessage::Bye => {
                     connection.closed().await;
@@ -130,15 +132,19 @@ impl NetworkManager {
     }
 
     /// Listener to host's NetworkMessages
-    pub async fn listen_events(connection: &Connection, play_state: &Arc<Mutex<PlayState>>) -> anyhow::Result<()>{
-        while let Ok(mut recv) = connection.accept_uni().await {
+    pub async fn listen_events(connection: Connection, play_state: Arc<Mutex<PlayState>>) -> anyhow::Result<(u8)>{
+        println!("Listening to host events");
+        loop {
+            let mut recv = connection.accept_uni().await.unwrap();
             let message = read(&mut recv).await?;
-            if !process_event(message, play_state, None).await {
+            println!("Got message - {:?}", message);
+            if !process_event(message, &play_state, None).await {
                 break;
             }
+            recv.stop(1u8.into())?;
         }
 
-        Ok(())
+        Ok(2)
     }
 }
 

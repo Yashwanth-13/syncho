@@ -5,7 +5,7 @@ use std::{sync::{Arc}};
 use crate::{network_manager::helpers::{process_event, read, send}, player::types::{PlayState, Song}};
 use anyhow::{anyhow};
 use serde::{Deserialize, Serialize};
-use tokio::{sync::{Mutex, broadcast}};
+use tokio::{sync::{Mutex, broadcast::{self, Receiver}}, task::JoinSet};
 use iroh::{EndpointId, endpoint::Connection, protocol::ProtocolHandler};
 
 
@@ -96,22 +96,8 @@ impl NetworkManager {
         
     }
 
-    /// Listener to client's NetworkMessages
-    async fn listen_to_client(&self, connection: &Connection) -> anyhow::Result<()> {
-        loop {
-            let (mut command_write, mut command_read) = connection.accept_bi().await?;
-            let command = read(&mut command_read).await.unwrap();
-            // println!("{:?}", command);
-            if !process_event(command, &self.play_state, Some(&mut command_write)).await {
-                break;
-            }
-        }
-        Ok(())
-    }
-
     /// Listener to broadcasted playback events
-    async fn forward_events(&self, connection: &Connection) -> anyhow::Result<()>{
-        let mut receiver = self.bc.tx.subscribe();
+    async fn forward_events(mut receiver: Receiver<NetworkMessage>, connection: Connection) -> anyhow::Result<u8>{
         while let Ok(msg) = receiver.recv().await {
             println!("Got a bc msg: {:?}", msg);
             let mut writer = connection.open_uni().await.unwrap();
@@ -120,7 +106,6 @@ impl NetworkManager {
             writer.finish()?;
             match msg {
                 NetworkMessage::Bye => {
-                    connection.closed().await;
                     break;
                 },
 
@@ -128,7 +113,21 @@ impl NetworkManager {
             }
         }
 
-        Ok(())
+        Ok(1)
+    }
+
+    /// Listener to client's NetworkMessages
+    async fn listen_to_client(connection: Connection, play_state: Arc<Mutex<PlayState>>) -> anyhow::Result<u8> {
+        loop {
+            let (mut command_write, mut command_read) = connection.accept_bi().await?;
+            let command = read(&mut command_read).await.unwrap();
+            // println!("{:?}", command);
+            if !process_event(command, &play_state, Some(&mut command_write)).await {
+                break;
+            }
+        }
+
+        Ok(2)
     }
 
     /// Listener to host's NetworkMessages
@@ -143,7 +142,7 @@ impl NetworkManager {
             }
             recv.stop(1u8.into())?;
         }
-
+        println!("Stopped listening to host");
         Ok(2)
     }
 }
@@ -176,14 +175,23 @@ impl ProtocolHandler for NetworkManager {
             return Ok(());
         }
 
-        tokio::select! {
-            _ = self.forward_events(&connection) => {}
-            _ = self.listen_to_client(&connection) => {
+        let mut set = JoinSet::new();
+        set.spawn(NetworkManager::forward_events(self.bc.tx.subscribe(), connection.clone()));
+        set.spawn(NetworkManager::listen_to_client(connection.clone(), Arc::clone(&self.play_state)));
+
+        if let Some(Ok(Ok(id))) = set.join_next().await {
+            set.abort_all();
+            if id == 1 {
+                // Host is closing the session
+                connection.closed().await;
+            } else {
+                // Client is disconnecting from the session
                 connection.close(1u8.into(), b"bye");
                 self.bc.send_client_event(ClientOp::Left { id: connection.remote_id() });
-            },
+            }
+        } else {
+            connection.close(1u8.into(), b"err"); // Something happened
         }
-
 
         Ok(())
     }

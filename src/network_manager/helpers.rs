@@ -82,7 +82,9 @@ pub async fn process_event(
 
         NetworkMessage::GetQueue => {
             let queue = ps.get_queue().await;
-            let _ = send(&mut writer.unwrap(), NetworkMessage::Queue { queue }).await;
+            let mut writer = writer.unwrap();
+            let _ = send(&mut writer, NetworkMessage::Queue { queue }).await;
+            let _ = writer.finish();
             true
         }
 

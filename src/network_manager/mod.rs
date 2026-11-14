@@ -102,8 +102,8 @@ impl NetworkManager {
             println!("Got a bc msg: {:?}", msg);
             let mut writer = connection.open_uni().await.unwrap();
             send(&mut writer, msg.clone()).await?;
-            writer.stopped();
             writer.finish()?;
+            writer.stopped();
             match msg {
                 NetworkMessage::Bye => {
                     break;
@@ -121,7 +121,8 @@ impl NetworkManager {
         loop {
             let (mut command_write, mut command_read) = connection.accept_bi().await?;
             let command = read(&mut command_read).await.unwrap();
-            // println!("{:?}", command);
+            println!("{:?}", command);
+            command_read.stop(1u8.into())?;
             if !process_event(command, &play_state, Some(&mut command_write)).await {
                 break;
             }

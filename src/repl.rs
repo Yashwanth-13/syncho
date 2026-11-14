@@ -1,4 +1,4 @@
-use tokio::sync::Mutex;
+use tokio::{io::AsyncWriteExt, sync::Mutex};
 use mini_async_repl::{
     anyhow,
 };
@@ -49,7 +49,8 @@ async fn get_queue(ps: &Arc<Mutex<PlayState>>, role: &Role) -> anyhow::Result<()
         Role::Client { connection } => {
             let (mut writer, mut reader) = connection.open_bi().await?;
             let _ = send(&mut writer, NetworkMessage::GetQueue).await;
-
+            writer.finish()?;
+            writer.stopped();
             let message = read(&mut reader).await.unwrap();
             let queue = match message {
                 NetworkMessage::Queue { queue } => {queue},
@@ -74,6 +75,9 @@ async fn play_next(ps: &Arc<Mutex<PlayState>>, role: &Role) -> anyhow::Result<()
         Role::Client { connection } => {
             let (mut writer, _) = connection.open_bi().await?;
             let _ = send(&mut writer, NetworkMessage::PlayNext(song)).await;
+            writer.finish()?;
+            writer.stopped();
+            
         }
     }
 

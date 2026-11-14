@@ -5,7 +5,10 @@ mod player;
 mod repl;
 
 use crate::{
-    helpers::get_input, network_manager::{Broadcaster, ClientOp, NetworkManager, NetworkMessage, helpers::{listen_to_playback, player_watcher, process_event, read, send}}, player::types::{Config, PlayState}, repl::{Role, looper},
+    helpers::get_input, network_manager::{
+        Broadcaster, ClientOp, NetworkManager, NetworkMessage, 
+        helpers::{process_event, read, send}
+    }, player::{listen_to_playback, player_watcher, types::{Config, PlayState}}, repl::{Role, looper},
 };
 
 use iroh::{Endpoint, PublicKey};
@@ -111,7 +114,7 @@ async fn main() -> anyhow::Result<()> {
                 if let Some(Ok(Ok(id))) = set.join_next().await {
                     set.abort_all();
                     if id == 1 {
-                        let (mut writer, mut reader) = conn.open_bi().await.unwrap();
+                        let (mut writer, _) = conn.open_bi().await.unwrap();
                         send(&mut writer, NetworkMessage::Bye ).await.unwrap();
                         conn.closed().await; // We are the sender here
                     } else {

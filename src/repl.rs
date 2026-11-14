@@ -2,14 +2,14 @@ use tokio::sync::Mutex;
 use mini_async_repl::{
     anyhow,
 };
-
 use std::{sync::Arc};
-
 use iroh::endpoint::Connection;
+
 use crate::{helpers::get_input, network_manager::helpers::{read}, player::types::PlayState};
 use crate::network_manager::{NetworkMessage, helpers::send};
 use crate::player::types::Song;
 
+/// Prompts the user for the details of a song
 fn get_song() -> Song {
     let song_name = get_input(&"--> Song name".to_string(), false);
     let artist_name = get_input(&"--> Artist Name".to_string(), true);
@@ -23,13 +23,13 @@ fn get_song() -> Song {
     }
 }
 
-
 #[derive(Clone)]
 pub enum Role {
     Host,
     Client { connection: Connection },
 }
 
+/// Helper for queue printing
 fn print_queue(queue: Vec<String>) {
     if queue.len() == 0 {
         println!("[syncho] Empty queue");
@@ -41,6 +41,7 @@ fn print_queue(queue: Vec<String>) {
     }
 }
 
+/// Gets the song queue. Sends a `NetworkMessage` to host if used as a client; prints locally if used as the host of the session
 async fn get_queue(ps: &Arc<Mutex<PlayState>>, role: &Role) -> anyhow::Result<()> {
     let queue = match role {
         Role::Host => {ps.lock().await.get_queue().await},
@@ -65,12 +66,13 @@ async fn get_queue(ps: &Arc<Mutex<PlayState>>, role: &Role) -> anyhow::Result<()
     Ok(())
 }
 
+/// Sets a specific song to be played next. Sends a `NetworkMessage` to host if used as a client.
 async fn play_next(ps: &Arc<Mutex<PlayState>>, role: &Role) -> anyhow::Result<()> {
     let song = get_song();
     match role {
         Role::Host => {ps.lock().await.play_next(song).await},
         Role::Client { connection } => {
-            let (mut writer, mut reader) = connection.open_bi().await?;
+            let (mut writer, _) = connection.open_bi().await?;
             let _ = send(&mut writer, NetworkMessage::PlayNext(song)).await;
         }
     }
@@ -78,7 +80,8 @@ async fn play_next(ps: &Arc<Mutex<PlayState>>, role: &Role) -> anyhow::Result<()
     Ok(())
 }
 
-pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) -> anyhow::Result<(u8)> {
+/// Starts the REPL for both client and host.
+pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) -> anyhow::Result<u8> {
     let queue_getter = ["gq", "get-queue"];
     let next_player = ["pn", "play-next"];
 
@@ -101,5 +104,6 @@ pub async fn looper(code: String, ps: Arc<Mutex<PlayState>>, role: Role) -> anyh
 
         if command.eq("exit") || command.eq("quit") {break}
     }
+
     Ok(1)
 }

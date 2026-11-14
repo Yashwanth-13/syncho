@@ -131,7 +131,7 @@ impl NetworkManager {
     }
 
     /// Listener to host's NetworkMessages
-    pub async fn listen_events(connection: Connection, play_state: Arc<Mutex<PlayState>>) -> anyhow::Result<(u8)>{
+    pub async fn listen_events(connection: Connection, play_state: Arc<Mutex<PlayState>>) -> anyhow::Result<u8>{
         println!("Listening to host events");
         loop {
             let mut recv = connection.accept_uni().await.unwrap();
